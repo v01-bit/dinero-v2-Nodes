@@ -686,42 +686,56 @@ function ModelDropdown({value,onChange,models,nodeBg,accent,color}){
 function PanelModelDropdown({value,onChange,models,accent}){
   const[open,setOpen]=useState(false);
   const ref=useRef(null);
+  const[pos,setPos]=useState(null);
   const cur=models.find(m=>m.id===value)||models[0];
   useEffect(()=>{
     if(!open)return;
-    const close=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};
+    const close=e=>{if(ref.current&&!ref.current.contains(e.target)){
+      const dd=document.getElementById('panel-model-dd');
+      if(dd&&dd.contains(e.target))return;
+      setOpen(false);
+    }};
     document.addEventListener('pointerdown',close,true);
     return()=>document.removeEventListener('pointerdown',close,true);
   },[open]);
+  const doOpen=()=>{
+    if(open){setOpen(false);return}
+    const r=ref.current.getBoundingClientRect();
+    setPos({top:r.bottom+2,left:r.left,width:r.width});
+    setOpen(true);
+  };
   return(
     <div ref={ref} style={{position:'relative',marginBottom:4}}>
-      <div onClick={()=>setOpen(!open)}
+      <div onClick={doOpen}
         style={{background:'#1a1a1a',color:cur.color,fontSize:12,fontWeight:600,padding:'8px 12px',borderRadius:6,
           border:`1px solid ${accent}22`,cursor:'pointer',display:'flex',alignItems:'center',
           justifyContent:'space-between',userSelect:'none'}}>
         <span>{cur.label} <span style={{color:'#666',fontWeight:400}}>({cur.cost})</span></span>
         <span style={{fontSize:11,color:'#555',marginLeft:8}}>{open?'▴':'▾'}</span>
       </div>
-      {open&&<div style={{position:'absolute',top:'100%',left:0,right:0,marginTop:2,
-        background:'#1e1e1e',border:`1px solid ${accent}33`,borderRadius:8,
-        boxShadow:'0 8px 32px rgba(0,0,0,0.6)',zIndex:200,overflow:'hidden',
-        maxHeight:220,overflowY:'auto'}}>
-        {models.map(m=>{
-          const isSel=m.id===value;
-          return <div key={m.id}
-            onClick={()=>{onChange(m.id);setOpen(false)}}
-            style={{padding:'8px 12px',fontSize:12,cursor:'pointer',
-              color:m.color,background:isSel?accent+'15':'transparent',
-              borderBottom:'1px solid #ffffff08',display:'flex',alignItems:'center',
-              gap:8,transition:'background 0.1s'}}
-            onMouseEnter={e=>e.target.style.background=accent+'22'}
-            onMouseLeave={e=>e.target.style.background=isSel?accent+'15':'transparent'}>
-            <span style={{width:6,height:6,borderRadius:3,background:isSel?m.color:'transparent',flexShrink:0}}/>
-            <span>{m.label}</span>
-            <span style={{color:'#555',fontSize:11,marginLeft:'auto'}}>{m.cost}</span>
-          </div>;
-        })}
-      </div>}
+      {open&&pos&&ReactDOM.createPortal(
+        <div id="panel-model-dd" style={{position:'fixed',top:pos.top,left:pos.left,width:pos.width,
+          background:'#1e1e1e',border:`1px solid ${accent}33`,borderRadius:8,
+          boxShadow:'0 8px 32px rgba(0,0,0,0.6)',zIndex:9999,overflow:'hidden',
+          maxHeight:320,overflowY:'auto'}}>
+          {models.map(m=>{
+            const isSel=m.id===value;
+            return <div key={m.id}
+              onClick={()=>{onChange(m.id);setOpen(false)}}
+              style={{padding:'8px 12px',fontSize:12,cursor:'pointer',
+                color:m.color,background:isSel?accent+'15':'transparent',
+                borderBottom:'1px solid #ffffff08',display:'flex',alignItems:'center',
+                gap:8,transition:'background 0.1s'}}
+              onMouseEnter={e=>e.target.style.background=accent+'22'}
+              onMouseLeave={e=>e.target.style.background=isSel?accent+'15':'transparent'}>
+              <span style={{width:6,height:6,borderRadius:3,background:isSel?m.color:'transparent',flexShrink:0}}/>
+              <span>{m.label}</span>
+              <span style={{color:'#555',fontSize:11,marginLeft:'auto'}}>{m.cost}</span>
+            </div>;
+          })}
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -1290,8 +1304,8 @@ function App(){
   const DRAG_THRESHOLD=5;
   const onMD=useCallback(e=>{
     if(e.button!==0||modal||wizard||panelExitPromptRef.current)return;
-    /* If click is inside the side panel, let it handle its own events */
-    if(e.target.closest('.panel-enter'))return;
+    /* If click is inside the side panel or its portaled dropdowns, let it handle its own events */
+    if(e.target.closest('.panel-enter')||e.target.closest('#panel-model-dd'))return;
     const tag=e.target.tagName;
     /* Buttons/options handle their own actions — let them through */
     if(tag==='BUTTON'||tag==='OPTION')return;
