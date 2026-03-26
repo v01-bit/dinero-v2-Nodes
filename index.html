@@ -936,9 +936,31 @@ function App(){
     /* PORT DRAG — all connection actions use drag lifecycle (mousedown→mousemove→mouseup) */
     const portEl=e.target.closest('[data-port]');
     if(portEl){
+      e.preventDefault();  /* block native drag */
+      e.stopPropagation(); /* prevent canvas pan from stealing gesture */
+
+      /* ── Nearest-centre port detection ── */
+      /* Instead of relying solely on e.target, find the closest port centre
+         among all ports on this node using screen coordinates */
       const nid=portEl.getAttribute('data-nid');
-      const side=portEl.getAttribute('data-port');
-      const wireIdxAttr=portEl.getAttribute('data-wire-idx');
+      const nodeEl=portEl.closest('[data-node]');
+      let bestPort=portEl; /* fallback to original target */
+      if(nodeEl){
+        const allPorts=nodeEl.querySelectorAll('[data-port]');
+        let bestDist=Infinity;
+        allPorts.forEach(p=>{
+          const r=p.getBoundingClientRect();
+          const cx=r.left+r.width/2, cy=r.top+r.height/2;
+          const d=Math.sqrt((e.clientX-cx)**2+(e.clientY-cy)**2);
+          if(d<bestDist){bestDist=d;bestPort=p}
+        });
+      }
+
+      const side=bestPort.getAttribute('data-port');
+      const wireIdxAttr=bestPort.getAttribute('data-wire-idx');
+
+      /* Lock interRef to wiring to prevent canvas pan from taking over */
+      interRef.current={type:'wiring'};
 
       if(wireIdxAttr!==null){
         /* Connected port → detach wire immediately, enter reconnect drag */
@@ -952,7 +974,6 @@ function App(){
           setWires(ws=>ws.filter((_,i)=>i!==existingIdx));
           if(otherNd){
             const otherSide=ew[0]===nid?(wd?wd.sB:'left'):(wd?wd.sA:'right');
-            const pp=pPos(otherNd,groups,otherSide);
             setWiringFrom({nid:otherNid,side:otherSide,isDragDisconnect:true});
             setWiringMouse(toCanvas(e.clientX,e.clientY));
           }
@@ -962,7 +983,7 @@ function App(){
         setWiringFrom({nid,side,isDragDisconnect:false});
         setWiringMouse(toCanvas(e.clientX,e.clientY));
       }
-      e.stopPropagation();return;
+      return;
     }
 
     /* NODE CLICK — entire node uses pending→drag threshold */
@@ -1008,7 +1029,25 @@ function App(){
     /* Wiring mouse tracking — follows cursor from port */
     if(wiringFrom){
       const c=toCanvas(e.clientX,e.clientY);
-      setWiringMouse(c);
+      /* ── Magnetic snap: pull toward nearby valid port ── */
+      const SNAP_DIST=30; /* pixels in canvas coords */
+      let snapTarget=null, bestD=SNAP_DIST;
+      nodes.forEach(nd=>{
+        if(nd.id===wiringFrom.nid)return; /* skip source node */
+        const abs=nAbs(nd,groups);
+        /* check all 4 side centres (basic) */
+        const pts=[
+          {x:abs.x+nd.w,y:abs.y+nd.h/2,s:'left'},   /* right edge */
+          {x:abs.x,     y:abs.y+nd.h/2,s:'right'},  /* left edge */
+          {x:abs.x+nd.w/2,y:abs.y+nd.h,s:'top'},    /* bottom edge */
+          {x:abs.x+nd.w/2,y:abs.y,     s:'bottom'}, /* top edge */
+        ];
+        pts.forEach(p=>{
+          const d=Math.sqrt((c.x-p.x)**2+(c.y-p.y)**2);
+          if(d<bestD){bestD=d;snapTarget={x:p.x,y:p.y,nid:nd.id}}
+        });
+      });
+      setWiringMouse(snapTarget||c);
       /* Don't return — allow interaction ref processing too if needed */
       if(!interRef.current)return;
     }
@@ -1017,6 +1056,7 @@ function App(){
     if(!ir)return;
 
     switch(ir.type){
+      case 'wiring': return; /* locked for port drag — block canvas pan */
       case 'panning':
         setPan({x:e.clientX-ir.sx,y:e.clientY-ir.sy});
         break;
@@ -1116,23 +1156,60 @@ function App(){
         break;
       }
     }
-  },[toCanvas,groups,wiringFrom]);
+  },[toCanvas,groups,nodes,wiringFrom]);
 
   /* ── MOUSE UP ── */
   const onMU=useCallback(e=>{
     /* ── Wiring drag release: resolve connection on mouseup ── */
     if(wiringFrom){
-      const portEl=document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-port]');
+      /* ── Nearest-centre port detection on release ── */
+      /* First try elementFromPoint, then fallback to nearest port by coordinate */
+      let tgtNid=null;
+      const elUnder=document.elementFromPoint(e.clientX,e.clientY);
+      const portEl=elUnder?.closest('[data-port]');
       if(portEl){
-        const tgtNid=portEl.getAttribute('data-nid');
-        if(tgtNid&&tgtNid!==wiringFrom.nid){
-          /* Released over a valid port on a different node → create connection */
-          setWires(w=>[...w,[wiringFrom.nid,tgtNid]]);
+        /* Find nearest port on this node's element */
+        const nodeEl=portEl.closest('[data-node]');
+        if(nodeEl){
+          const allPorts=nodeEl.querySelectorAll('[data-port]');
+          let bestPort=portEl, bestDist=Infinity;
+          allPorts.forEach(p=>{
+            const r=p.getBoundingClientRect();
+            const cx=r.left+r.width/2, cy=r.top+r.height/2;
+            const d=Math.sqrt((e.clientX-cx)**2+(e.clientY-cy)**2);
+            if(d<bestDist){bestDist=d;bestPort=p}
+          });
+          tgtNid=bestPort.getAttribute('data-nid');
+        }else{
+          tgtNid=portEl.getAttribute('data-nid');
         }
-        /* Released on same node → just cancel */
+      }else{
+        /* Fallback: check if cursor is within magnetic snap range of any port */
+        const c=toCanvas(e.clientX,e.clientY);
+        const SNAP_DIST=30;
+        let bestD=SNAP_DIST;
+        nodes.forEach(nd=>{
+          if(nd.id===wiringFrom.nid)return;
+          const abs=nAbs(nd,groups);
+          const pts=[
+            {x:abs.x+nd.w,y:abs.y+nd.h/2},
+            {x:abs.x,     y:abs.y+nd.h/2},
+            {x:abs.x+nd.w/2,y:abs.y+nd.h},
+            {x:abs.x+nd.w/2,y:abs.y},
+          ];
+          pts.forEach(p=>{
+            const d=Math.sqrt((c.x-p.x)**2+(c.y-p.y)**2);
+            if(d<bestD){bestD=d;tgtNid=nd.id}
+          });
+        });
       }
-      /* Released in empty space → connection removed (already detached if disconnect) */
+      if(tgtNid&&tgtNid!==wiringFrom.nid){
+        /* Valid target → create connection */
+        setWires(w=>[...w,[wiringFrom.nid,tgtNid]]);
+      }
+      /* Released in empty space or same node → connection removed */
       setWiringFrom(null);setWiringMouse(null);
+      interRef.current=null; /* clear wiring lock */
     }
 
     const ir=interRef.current;
@@ -1171,6 +1248,7 @@ function App(){
         break;
       }
 
+      case 'wiring': /* already handled above */
       case 'dragging_group':
       case 'resizing_group':
       case 'panning':
@@ -1178,7 +1256,7 @@ function App(){
     }
 
     interRef.current=null;
-  },[nodes,groups,wireData,wiringFrom]);
+  },[nodes,groups,wireData,wiringFrom,toCanvas]);
 
   useEffect(()=>{
     window.addEventListener('mousemove',onMM);
@@ -1522,10 +1600,16 @@ function App(){
                     else{left=nd.w/2+offset-9;top=-9}
 
                     const col=isConn?(isErr?'#cc3333':t.accent):(isW?t.accent:'#555');
+                    /* Hitbox: 30×30 invisible area, visual dot stays small */
+                    const HIT=30, VIS=18;
+                    const hitOff=(HIT-VIS)/2; /* centre the hitbox over the visual position */
                     ports.push(
                       <div key={side+'-'+si} data-port={side} data-nid={nd.id}
                         {...(isConn?{'data-wire-idx':conn.wi}:{})}
-                        style={{position:'absolute',left,top,width:18,height:18,borderRadius:9,
+                        draggable={false}
+                        onDragStart={e=>e.preventDefault()}
+                        style={{position:'absolute',left:left-hitOff,top:top-hitOff,
+                          width:HIT,height:HIT,borderRadius:HIT/2,
                           cursor:'crosshair',zIndex:35,display:'flex',alignItems:'center',
                           justifyContent:'center',pointerEvents:'auto'}}>
                         <div style={{width:10,height:10,borderRadius:5,
@@ -1534,8 +1618,10 @@ function App(){
                           display:'flex',alignItems:'center',justifyContent:'center',
                           boxShadow:isConn?`0 0 5px ${glow}44`:'none',
                           animation:(!isConn&&isTarget)?'portPulse 1s ease infinite':'none',
+                          pointerEvents:'none', /* clicks pass to parent hitbox */
                         }}>
-                          <div style={{width:4,height:4,borderRadius:2,background:col}}/>
+                          <div style={{width:4,height:4,borderRadius:2,background:col,
+                            pointerEvents:'none'}}/>
                         </div>
                       </div>
                     );
