@@ -19,7 +19,7 @@ select option{background:#1a1a1a;color:#ccc}
 textarea{resize:none}
 input,textarea,select{outline:none;border:none;font-family:inherit}
 @keyframes flowDash{from{stroke-dashoffset:22}to{stroke-dashoffset:0}}
-.wire-flow{animation:flowDash 0.8s linear infinite}
+.wire-flow{animation:flowDash 0.7s linear infinite}
 @keyframes wireRetract{0%{opacity:1;stroke-dashoffset:0}100%{opacity:0;stroke-dashoffset:1000}}
 @keyframes errorPulse{0%,100%{box-shadow:0 0 30px #cc333344,inset 0 0 15px #cc333311}50%{box-shadow:0 0 40px #cc333366,inset 0 0 20px #cc333322}}
 @keyframes portPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.4)}}
@@ -210,113 +210,71 @@ function nAbs(n,gs){const g=gs.find(g=>g.id===n.gid);return g?{x:g.x+n.x,y:g.y+G
 function nCtr(n,gs){const a=nAbs(n,gs);return{x:a.x+n.w/2,y:a.y+n.h/2}}
 function pPos(n,gs,s){const a=nAbs(n,gs);return s==='left'?{x:a.x,y:a.y+n.h/2}:s==='right'?{x:a.x+n.w,y:a.y+n.h/2}:s==='top'?{x:a.x+n.w/2,y:a.y}:{x:a.x+n.w/2,y:a.y+n.h}}
 
-/* ── Orthogonal routing constants ── */
-const WIRE_MARGIN=25; /* min distance wires keep from node edges */
-const WIRE_SEP=16;    /* parallel wire separation — visible spacing between adjacent wires */
+/* ── Multi-port system ──
+   Each node has multiple output ports (right side) and input ports (left side).
+   Ports are stacked vertically with even spacing. Each wire gets its own port. */
+const PORT_SEP=18; /* vertical spacing between stacked ports */
+const PORT_PAD=30; /* min padding from top/bottom of node to first/last port */
 
-/* Determine exit/entry sides: output=bottom for downward, top for upward, right/left for same-tier */
-function bestSides(cA,cB){
-  const dx=cB.x-cA.x,dy=cB.y-cA.y;
-  /* Primarily vertical flow (tier hierarchy) */
-  if(Math.abs(dy)>Math.abs(dx)*0.3)return[dy>0?'bottom':'top',dy>0?'top':'bottom'];
-  /* Horizontal flow (same tier) */
-  return[dx>0?'right':'left',dx>0?'left':'right'];
-}
-
-/* ── Orthogonal wire routing with lane-based separation ──
-   Each wire gets a unique lane offset so parallel wires never overlap.
-   The laneAlloc object maps each wire index to its offset, pre-computed
-   by grouping wires that share the same routing corridor. */
-function makeWirePath(x1,y1,x2,y2,s1,s2,allNodes,gs,srcId,tgtId,laneOffset){
-  const M=WIRE_MARGIN;
-  const off=laneOffset||0;
-
-  /* ── Same side exit/enter: standard orthogonal ── */
-  if(s1==='bottom'&&s2==='top'){
-    const midY=(y1+y2)/2;
-    return`M${x1},${y1} L${x1},${midY+off} L${x2},${midY+off} L${x2},${y2}`;
-  }
-  if(s1==='top'&&s2==='bottom'){
-    const midY=(y1+y2)/2;
-    return`M${x1},${y1} L${x1},${midY+off} L${x2},${midY+off} L${x2},${y2}`;
-  }
-  if(s1==='right'&&s2==='left'){
-    const midX=(x1+x2)/2;
-    return`M${x1},${y1} L${midX+off},${y1} L${midX+off},${y2} L${x2},${y2}`;
-  }
-  if(s1==='left'&&s2==='right'){
-    const midX=(x1+x2)/2;
-    return`M${x1},${y1} L${midX+off},${y1} L${midX+off},${y2} L${x2},${y2}`;
-  }
-
-  /* ── U-turn cases ── */
-  if(s1==='bottom'&&s2==='bottom'){
-    const laneY=Math.max(y1,y2)+M*2;
-    return`M${x1},${y1} L${x1},${laneY+off} L${x2},${laneY+off} L${x2},${y2}`;
-  }
-  if(s1==='top'&&s2==='top'){
-    const laneY=Math.min(y1,y2)-M*2;
-    return`M${x1},${y1} L${x1},${laneY+off} L${x2},${laneY+off} L${x2},${y2}`;
-  }
-  if(s1==='right'&&s2==='right'){
-    const laneX=Math.max(x1,x2)+M*2;
-    return`M${x1},${y1} L${laneX+off},${y1} L${laneX+off},${y2} L${x2},${y2}`;
-  }
-  if(s1==='left'&&s2==='left'){
-    const laneX=Math.min(x1,x2)-M*2;
-    return`M${x1},${y1} L${laneX+off},${y1} L${laneX+off},${y2} L${x2},${y2}`;
-  }
-
-  /* ── Cross-axis routing ── */
-  if((s1==='bottom'||s1==='top')&&(s2==='left'||s2==='right')){
-    return`M${x1},${y1} L${x1},${y2+off} L${x2},${y2+off}`;
-  }
-  if((s1==='left'||s1==='right')&&(s2==='top'||s2==='bottom')){
-    return`M${x1},${y1} L${x2+off},${y1} L${x2+off},${y2}`;
-  }
-
-  /* Fallback: L-bend */
-  return`M${x1},${y1} L${x1},${y2} L${x2},${y2}`;
-}
-
-/* ── Lane allocator: groups wires sharing the same corridor and assigns offsets ──
-   A "corridor" is defined by the routing direction + the midpoint of the shared segment.
-   Wires in the same corridor get evenly spread around the centre line. */
-function allocateLanes(wireInfos){
-  /* wireInfos: [{idx, s1, s2, x1, y1, x2, y2}] */
-  const LANE_THRESH=60; /* wires within this distance share a corridor */
-  const buckets=new Map(); /* corridorKey → [wireIdx, ...] */
-
-  wireInfos.forEach(wi=>{
-    /* Determine which axis the shared segment runs on and its approximate position */
-    let corridorKey;
-    if((wi.s1==='bottom'&&wi.s2==='top')||(wi.s1==='top'&&wi.s2==='bottom')){
-      /* Horizontal shared segment at midY */
-      const midY=Math.round((wi.y1+wi.y2)/2/LANE_THRESH)*LANE_THRESH;
-      corridorKey='H'+midY;
-    }else if((wi.s1==='right'&&wi.s2==='left')||(wi.s1==='left'&&wi.s2==='right')){
-      /* Vertical shared segment at midX */
-      const midX=Math.round((wi.x1+wi.x2)/2/LANE_THRESH)*LANE_THRESH;
-      corridorKey='V'+midX;
-    }else if(wi.s1==='bottom'&&wi.s2==='bottom'||wi.s1==='top'&&wi.s2==='top'){
-      const laneY=wi.s1==='bottom'?Math.max(wi.y1,wi.y2):Math.min(wi.y1,wi.y2);
-      corridorKey='U'+Math.round(laneY/LANE_THRESH)*LANE_THRESH;
-    }else{
-      corridorKey='X'+wi.idx; /* unique — no grouping */
-    }
-    if(!buckets.has(corridorKey))buckets.set(corridorKey,[]);
-    buckets.get(corridorKey).push(wi.idx);
+/* Compute per-wire port positions: outputs on right, inputs on left, stacked vertically.
+   Returns portMap: { [wireIdx]: { src: {x,y}, tgt: {x,y} } } */
+function computePortPositions(wires,nodes,groups){
+  /* Collect outputs per node (wires where node is source) and inputs (where node is target) */
+  const outputs={}; /* nodeId → [wireIdx, ...] */
+  const inputs={};
+  wires.forEach((w,i)=>{
+    if(!outputs[w[0]])outputs[w[0]]=[];
+    outputs[w[0]].push(i);
+    if(!inputs[w[1]])inputs[w[1]]=[];
+    inputs[w[1]].push(i);
   });
 
-  /* Assign offsets: centre the group around 0, spread by WIRE_SEP */
-  const offsets={};
-  buckets.forEach(indices=>{
-    const n=indices.length;
-    indices.forEach((idx,i)=>{
-      offsets[idx]=(i-(n-1)/2)*WIRE_SEP;
+  const portMap={};
+
+  /* For each node, stack its output ports on the right side */
+  Object.keys(outputs).forEach(nid=>{
+    const nd=nodes.find(n=>n.id===nid);if(!nd)return;
+    const a=nAbs(nd,groups);
+    const idxs=outputs[nid];
+    const n=idxs.length;
+    /* Centre the port stack vertically on the node */
+    const totalH=(n-1)*PORT_SEP;
+    const startY=a.y+nd.h/2-totalH/2;
+    idxs.forEach((wi,i)=>{
+      if(!portMap[wi])portMap[wi]={};
+      portMap[wi].src={x:a.x+nd.w, y:startY+i*PORT_SEP};
     });
   });
-  return offsets;
+
+  /* For each node, stack its input ports on the left side */
+  Object.keys(inputs).forEach(nid=>{
+    const nd=nodes.find(n=>n.id===nid);if(!nd)return;
+    const a=nAbs(nd,groups);
+    const idxs=inputs[nid];
+    const n=idxs.length;
+    const totalH=(n-1)*PORT_SEP;
+    const startY=a.y+nd.h/2-totalH/2;
+    idxs.forEach((wi,i)=>{
+      if(!portMap[wi])portMap[wi]={};
+      portMap[wi].tgt={x:a.x, y:startY+i*PORT_SEP};
+    });
+  });
+
+  return{portMap,outputs,inputs};
+}
+
+/* ── Smooth bezier wire path ──
+   Controlled curves: exit horizontally right, enter horizontally left.
+   Control point distance scales with horizontal gap for consistent curvature. */
+function makeWirePath(x1,y1,x2,y2){
+  const dx=Math.abs(x2-x1);
+  const cp=clamp(dx*0.4,60,250); /* control point offset — gentle, consistent */
+  /* If target is to the left (backward wire), use a wider arc */
+  if(x2<x1+40){
+    const spread=Math.max(80,Math.abs(y2-y1)*0.3+60);
+    return`M${x1},${y1} C${x1+spread},${y1} ${x2-spread},${y2} ${x2},${y2}`;
+  }
+  return`M${x1},${y1} C${x1+cp},${y1} ${x2-cp},${y2} ${x2},${y2}`;
 }
 
 function rectsOverlap(a,b,gap){return a.x<b.x+b.w+gap&&a.x+a.w+gap>b.x&&a.y<b.y+b.h+gap&&a.y+a.h+gap>b.y}
@@ -892,32 +850,24 @@ function App(){
   /* ── connected set ── */
   const connSet=useMemo(()=>{const s=new Set();wires.forEach(w=>{s.add(w[0]);s.add(w[1])});return s},[wires]);
 
-  /* ── wire data ── */
-  const wireData=useMemo(()=>{
-    /* Phase 1: compute sides and port positions for all wires */
-    const prepass=wires.map((w,i)=>{
-      const sN=nodes.find(n=>n.id===w[0]),tN=nodes.find(n=>n.id===w[1]);
-      if(!sN||!tN)return null;
-      const cA=nCtr(sN,groups),cB=nCtr(tN,groups);
-      const[sA,sB]=bestSides(cA,cB);
-      const pA=pPos(sN,groups,sA),pB=pPos(tN,groups,sB);
-      return{idx:i,sN,tN,sA,sB,pA,pB,s1:sA,s2:sB,x1:pA.x,y1:pA.y,x2:pB.x,y2:pB.y};
-    });
-    /* Phase 2: allocate lane offsets so parallel wires get separated */
-    const validPrepass=prepass.filter(Boolean);
-    const laneOffsets=allocateLanes(validPrepass);
-    /* Phase 3: build final wire paths with lane offsets */
-    return prepass.map((wp,i)=>{
-      if(!wp)return null;
-      const w=wires[i];
-      const isErr=wp.sN.status==='error';
-      const srcTier=tierMap[wp.sN.gid]||'worker';
-      const accent=TIERS[srcTier].accent;
-      const off=laneOffsets[i]||0;
-      return{i,src:w[0],tgt:w[1],pA:wp.pA,pB:wp.pB,sA:wp.sA,sB:wp.sB,isErr,accent,
-        path:makeWirePath(wp.pA.x,wp.pA.y,wp.pB.x,wp.pB.y,wp.sA,wp.sB,nodes,groups,w[0],w[1],off)};
-    }).filter(Boolean);
+  /* ── wire data with multi-port positions ── */
+  const{portMap,portOutputs,portInputs}=useMemo(()=>{
+    const{portMap,outputs,inputs}=computePortPositions(wires,nodes,groups);
+    return{portMap,portOutputs:outputs,portInputs:inputs};
   },[wires,nodes,groups]);
+
+  const wireData=useMemo(()=>wires.map((w,i)=>{
+    const sN=nodes.find(n=>n.id===w[0]),tN=nodes.find(n=>n.id===w[1]);
+    if(!sN||!tN)return null;
+    const ports=portMap[i];
+    if(!ports||!ports.src||!ports.tgt)return null;
+    const pA=ports.src, pB=ports.tgt;
+    const isErr=sN.status==='error';
+    const srcTier=tierMap[sN.gid]||'worker';
+    const accent=TIERS[srcTier].accent;
+    return{i,src:w[0],tgt:w[1],pA,pB,sA:'right',sB:'left',isErr,accent,
+      path:makeWirePath(pA.x,pA.y,pB.x,pB.y)};
+  }).filter(Boolean),[wires,nodes,groups,portMap]);
 
   /* ── adaptive zoom: simplified view below 0.4 ── */
   const simplified=zoom<0.4;
@@ -935,45 +885,38 @@ function App(){
     if(portEl){
       const nid=portEl.getAttribute('data-nid');
       const side=portEl.getAttribute('data-port');
+      const wireIdxAttr=portEl.getAttribute('data-wire-idx');
       if(wiringFrom){
         /* Complete the wire */
         if(wiringFrom.nid!==nid){
-          /* If we were dragging an existing wire, it's already been removed — add the new one */
           setWires(w=>[...w,[wiringFrom.nid,nid]]);
         }
         setWiringFrom(null);setWiringMouse(null);
-      }else{
-        /* Check for existing wire on this port+side for drag-from-port disconnect */
-        const existingIdx=wires.findIndex(w=>{
-          if(side==='right'||side==='bottom')return w[0]===nid;
-          return w[1]===nid;
-        });
-        if(existingIdx>=0){
-          /* Detach existing wire and start re-wiring from the OTHER end */
-          const ew=wires[existingIdx];
+      }else if(wireIdxAttr!==null){
+        /* Clicked a connected port — detach this specific wire and enter reconnect mode */
+        const existingIdx=parseInt(wireIdxAttr);
+        const ew=wires[existingIdx];
+        if(ew){
           const otherNid=ew[0]===nid?ew[1]:ew[0];
           const otherNd=nodes.find(n=>n.id===otherNid);
-          /* Animate the old wire dying (red retract) */
+          /* Animate the old wire dying */
           const wd=wireData.find(w=>w.i===existingIdx);
           if(wd)setDyingWires([{path:wd.path}]);
           /* Remove the old wire */
           setWires(ws=>ws.filter((_,i)=>i!==existingIdx));
-          /* Start new wiring from the other end */
+          /* Start re-wiring from the other end */
           if(otherNd){
-            const cA=nCtr(otherNd,groups);
-            const nd2=nodes.find(n=>n.id===nid);
-            const cB=nd2?nCtr(nd2,groups):{x:0,y:0};
-            const[sA]=bestSides(cA,cB);
-            setWiringFrom({nid:otherNid,side:sA,isDragDisconnect:true});
-            const pp=pPos(otherNd,groups,sA);
+            const otherSide=ew[0]===nid?'left':'right'; /* reconnect from the other node's side */
+            setWiringFrom({nid:otherNid,side:otherSide,isDragDisconnect:true});
+            const pp=pPos(otherNd,groups,otherSide);
             setWiringMouse(pp);
           }
-        }else{
-          /* No existing wire — start fresh wiring */
-          setWiringFrom({nid,side});
-          const nd=nodes.find(n=>n.id===nid);
-          if(nd){const pp=pPos(nd,groups,side);setWiringMouse(pp)}
         }
+      }else{
+        /* Generic port — start fresh wiring */
+        setWiringFrom({nid,side});
+        const nd=nodes.find(n=>n.id===nid);
+        if(nd){const pp=pPos(nd,groups,side);setWiringMouse(pp)}
       }
       e.stopPropagation();return;
     }
@@ -1235,29 +1178,31 @@ function App(){
     const portEl=e.target.closest('[data-port]');
     if(portEl){
       e.preventDefault();
-      const nid=portEl.getAttribute('data-nid');
-      /* Animate disconnection: move wires to dying, turn red */
-      const dying=wires.filter(w=>w[0]===nid||w[1]===nid).map(w=>{
-        const sN=nodes.find(n=>n.id===w[0]),tN=nodes.find(n=>n.id===w[1]);
-        if(!sN||!tN)return null;
-        const cA=nCtr(sN,groups),cB=nCtr(tN,groups);
-        const[sA,sB]=bestSides(cA,cB);
-        const pA=pPos(sN,groups,sA),pB=pPos(tN,groups,sB);
-        return{path:makeWirePath(pA.x,pA.y,pB.x,pB.y,sA,sB,nodes,groups,w[0],w[1])};
-      }).filter(Boolean);
-      setDyingWires(dying);
-      setWires(ws=>ws.filter(w=>w[0]!==nid&&w[1]!==nid));
+      const wireIdxAttr=portEl.getAttribute('data-wire-idx');
+      if(wireIdxAttr!==null){
+        /* Right-click a connected port — disconnect that specific wire */
+        const idx=parseInt(wireIdxAttr);
+        const wd=wireData.find(w=>w.i===idx);
+        if(wd)setDyingWires([{path:wd.path}]);
+        setWires(ws=>ws.filter((_,i)=>i!==idx));
+      }else{
+        /* Right-click generic port — disconnect all wires on this node */
+        const nid=portEl.getAttribute('data-nid');
+        const dying=wireData.filter(wd=>wd.src===nid||wd.tgt===nid).map(wd=>({path:wd.path}));
+        setDyingWires(dying);
+        setWires(ws=>ws.filter(w=>w[0]!==nid&&w[1]!==nid));
+      }
       return;
     }
     const wireEl=e.target.closest('[data-wire]');
     if(wireEl){
       e.preventDefault();
       const idx=parseInt(wireEl.getAttribute('data-wire'));
-      const wd=wireData[idx];
+      const wd=wireData.find(w=>w.i===idx);
       if(wd)setDyingWires([{path:wd.path}]);
       setWires(ws=>ws.filter((_,i)=>i!==idx));
     }
-  },[wires,nodes,groups,wireData]);
+  },[wires,wireData]);
 
   /* ── node mutations with confirmation ── */
   const updateNode=useCallback((id,patch)=>setNodes(ns=>ns.map(n=>n.id===id?{...n,...patch}:n)),[]);
@@ -1265,15 +1210,8 @@ function App(){
   const requestDelete=useCallback(id=>{
     setModal({type:'delete',id,msg:'Are you sure you want to remove this node?',
       onConfirm:()=>{
-        /* Animate outgoing wires dying */
-        const dying=wires.filter(w=>w[0]===id||w[1]===id).map(w=>{
-          const sN=nodes.find(n=>n.id===w[0]),tN=nodes.find(n=>n.id===w[1]);
-          if(!sN||!tN)return null;
-          const cA=nCtr(sN,groups),cB=nCtr(tN,groups);
-          const[sA,sB]=bestSides(cA,cB);
-          const pA=pPos(sN,groups,sA),pB=pPos(tN,groups,sB);
-          return{path:makeWirePath(pA.x,pA.y,pB.x,pB.y,sA,sB,nodes,groups,w[0],w[1])};
-        }).filter(Boolean);
+        /* Animate connected wires dying */
+        const dying=wireData.filter(wd=>wd.src===id||wd.tgt===id).map(wd=>({path:wd.path}));
         setDyingWires(dying);
         setNodes(ns=>ns.filter(n=>n.id!==id));
         setWires(ws=>ws.filter(w=>w[0]!==id&&w[1]!==id));
@@ -1281,7 +1219,7 @@ function App(){
         if(panelNode===id)setPanelNode(null);
         setModal(null);
       }});
-  },[wires,nodes,groups,selected,panelNode]);
+  },[wireData,selected,panelNode]);
 
 
   const addNode=useCallback(gid=>{
@@ -1472,33 +1410,98 @@ function App(){
                 </>}
               </div>
 
-              {/* PORTS — rendered outside overflow:hidden wrapper */}
-              {['left','right','top','bottom'].map(side=>{
-                const connected=connSet.has(nd.id);
+              {/* PORTS — individual ports per connection, outputs on right, inputs on left */}
+              {(()=>{
                 const isW=wiringFrom!==null;
                 const isTarget=isW&&wiringFrom.nid!==nd.id;
-                const col=isErr?'#cc3333':isW?t.accent:connected?'#aaa':'#555';
                 const glow=isErr?'#cc3333':t.accent;
-                return(
-                  <div key={side} data-port={side} data-nid={nd.id} style={{
-                    position:'absolute',
-                    left:side==='left'?-11:side==='right'?nd.w-11:nd.w/2-11,
-                    top:side==='top'?-11:side==='bottom'?nd.h-11:nd.h/2-11,
+                const ports=[];
+                /* Output ports (right side) — one per outgoing wire */
+                const outIdxs=portOutputs[nd.id]||[];
+                const outN=outIdxs.length;
+                const outTotalH=(outN-1)*PORT_SEP;
+                const outStartY=nd.h/2-outTotalH/2;
+                outIdxs.forEach((wi,pi)=>{
+                  const col=isErr?'#cc3333':t.accent;
+                  ports.push(
+                    <div key={'out-'+wi} data-port="right" data-nid={nd.id} data-wire-idx={wi} style={{
+                      position:'absolute',left:nd.w-11,top:outStartY+pi*PORT_SEP-11,
+                      width:22,height:22,borderRadius:11,cursor:'crosshair',zIndex:35,
+                      display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'auto',
+                    }}>
+                      <div style={{width:12,height:12,borderRadius:6,
+                        border:`1.5px solid ${col}`,background:col+'22',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        boxShadow:`0 0 6px ${glow}44`,
+                      }}>
+                        <div style={{width:5,height:5,borderRadius:3,background:col}}/>
+                      </div>
+                    </div>
+                  );
+                });
+                /* Input ports (left side) — one per incoming wire */
+                const inIdxs=portInputs[nd.id]||[];
+                const inN=inIdxs.length;
+                const inTotalH=(inN-1)*PORT_SEP;
+                const inStartY=nd.h/2-inTotalH/2;
+                inIdxs.forEach((wi,pi)=>{
+                  const col=isErr?'#cc3333':t.accent;
+                  ports.push(
+                    <div key={'in-'+wi} data-port="left" data-nid={nd.id} data-wire-idx={wi} style={{
+                      position:'absolute',left:-11,top:inStartY+pi*PORT_SEP-11,
+                      width:22,height:22,borderRadius:11,cursor:'crosshair',zIndex:35,
+                      display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'auto',
+                    }}>
+                      <div style={{width:12,height:12,borderRadius:6,
+                        border:`1.5px solid ${col}`,background:col+'22',
+                        display:'flex',alignItems:'center',justifyContent:'center',
+                        boxShadow:`0 0 6px ${glow}44`,
+                      }}>
+                        <div style={{width:5,height:5,borderRadius:3,background:col}}/>
+                      </div>
+                    </div>
+                  );
+                });
+                /* Generic output port (right) — always visible for new connections */
+                const genOutCol=isW?t.accent:outN>0?'transparent':'#555';
+                if(outN===0||isW)ports.push(
+                  <div key="gen-out" data-port="right" data-nid={nd.id} style={{
+                    position:'absolute',left:nd.w-11,top:nd.h/2-11,
                     width:22,height:22,borderRadius:11,cursor:'crosshair',zIndex:35,
                     display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'auto',
                   }}>
-                    <div style={{width:14,height:14,borderRadius:7,
-                      border:`1.5px solid ${col}`,
-                      background:isW?col+'33':connected?col+'22':'transparent',
+                    <div style={{width:12,height:12,borderRadius:6,
+                      border:`1.5px solid ${genOutCol}`,
+                      background:isW?genOutCol+'33':'transparent',
                       display:'flex',alignItems:'center',justifyContent:'center',
-                      boxShadow:connected||isW?`0 0 6px ${glow}44`:'none',
+                      boxShadow:isW?`0 0 6px ${glow}44`:'none',
                       animation:isTarget?'portPulse 1s ease infinite':'none',
                     }}>
-                      <div style={{width:6,height:6,borderRadius:3,background:col}}/>
+                      <div style={{width:5,height:5,borderRadius:3,background:genOutCol}}/>
                     </div>
                   </div>
                 );
-              })}
+                /* Generic input port (left) — always visible for new connections */
+                const genInCol=isW?t.accent:inN>0?'transparent':'#555';
+                if(inN===0||isW)ports.push(
+                  <div key="gen-in" data-port="left" data-nid={nd.id} style={{
+                    position:'absolute',left:-11,top:nd.h/2-11,
+                    width:22,height:22,borderRadius:11,cursor:'crosshair',zIndex:35,
+                    display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'auto',
+                  }}>
+                    <div style={{width:12,height:12,borderRadius:6,
+                      border:`1.5px solid ${genInCol}`,
+                      background:isW?genInCol+'33':'transparent',
+                      display:'flex',alignItems:'center',justifyContent:'center',
+                      boxShadow:isW?`0 0 6px ${glow}44`:'none',
+                      animation:isTarget?'portPulse 1s ease infinite':'none',
+                    }}>
+                      <div style={{width:5,height:5,borderRadius:3,background:genInCol}}/>
+                    </div>
+                  </div>
+                );
+                return ports;
+              })()}
               {nodeResizeHandles(nd.id,nd.w,nd.h,startNResize)}
             </div>
           );
@@ -1521,32 +1524,31 @@ function App(){
           {/* DYING WIRES (retract animation) */}
           {dyingWires.map((dw,i)=>(
             <path key={'die-'+i} d={dw.path} fill="none" stroke="#cc3333" strokeWidth="2.5"
-              className="wire-dying" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="1000"/>
+              className="wire-dying" strokeLinecap="round" strokeDasharray="1000"/>
           ))}
 
-          {/* ACTIVE WIRES — orthogonal routing, source-colored */}
+          {/* ACTIVE WIRES — smooth bezier curves, source-colored */}
           {wireData.map(wd=>(
             <g key={wd.i}>
               {/* subtle shadow for depth */}
               <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent} strokeWidth="4"
-                opacity={wd.isErr?0.04:0.05} pointerEvents="none" strokeLinejoin="round"/>
+                opacity={wd.isErr?0.04:0.06} pointerEvents="none" strokeLinecap="round"/>
               {/* main cable — colored by SOURCE tier */}
               <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent}
                 strokeWidth={wd.isErr?'2':'1.6'}
                 strokeDasharray={wd.isErr?'6 4':'none'} opacity={wd.isErr?0.7:0.55}
                 markerEnd={wd.isErr?'url(#arr-e)':'url(#arr)'}
-                data-wire={wd.i} style={{pointerEvents:'stroke',cursor:'pointer'}}
-                strokeLinecap="round" strokeLinejoin="round"/>
-              {/* flow particles — travelling dots along orthogonal path */}
+                data-wire={wd.i} style={{pointerEvents:'stroke',cursor:'pointer'}} strokeLinecap="round"/>
+              {/* flow particles — travelling dots along curve */}
               {!wd.isErr&&(
                 <path d={wd.path} fill="none" stroke={wd.accent} className="wire-flow"
                   strokeWidth="2.2" strokeDasharray="4 18" opacity="0.8"
-                  strokeLinecap="round" strokeLinejoin="round" pointerEvents="none"/>
+                  strokeLinecap="round" pointerEvents="none"/>
               )}
             </g>
           ))}
 
-          {/* TEMPORARY WIRE — orthogonal preview while wiring */}
+          {/* TEMPORARY WIRE — smooth bezier preview while wiring */}
           {wiringFrom&&wiringMouse&&(()=>{
             const srcN=nodes.find(n=>n.id===wiringFrom.nid);
             if(!srcN)return null;
@@ -1554,21 +1556,18 @@ function App(){
             const srcTier=tierMap[srcN.gid]||'worker';
             const accent=wiringFrom.isDragDisconnect?'#cc3333':TIERS[srcTier].accent;
             const mx=wiringMouse.x,my=wiringMouse.y;
-            /* Orthogonal temp wire: exit from port side, then L-bend to cursor */
-            let path;
+            /* Smooth bezier preview: exits horizontally from port side */
+            const dx=Math.abs(mx-pp.x);
+            const cp=clamp(dx*0.4,60,200);
             const s=wiringFrom.side;
-            if(s==='bottom'||s==='top'){
-              const midY=(pp.y+my)/2;
-              path=`M${pp.x},${pp.y} L${pp.x},${midY} L${mx},${midY} L${mx},${my}`;
-            }else{
-              const midX=(pp.x+mx)/2;
-              path=`M${pp.x},${pp.y} L${midX},${pp.y} L${midX},${my} L${mx},${my}`;
-            }
+            const sx=s==='right'?pp.x+cp:s==='left'?pp.x-cp:pp.x;
+            const sy=s==='top'?pp.y-cp:s==='bottom'?pp.y+cp:pp.y;
+            const path=`M${pp.x},${pp.y} C${sx},${sy} ${mx},${my} ${mx},${my}`;
             return(
               <g>
                 <circle cx={pp.x} cy={pp.y} r="5" fill={accent} opacity="0.9"/>
                 <path d={path} fill="none" stroke={accent} strokeWidth="2" opacity="0.7"
-                  strokeLinecap="round" strokeLinejoin="round"
+                  strokeLinecap="round"
                   strokeDasharray={wiringFrom.isDragDisconnect?'6 4':'none'}/>
                 <circle cx={mx} cy={my} r="4" fill={accent} opacity="0.6"
                   stroke={accent} strokeWidth="1" strokeOpacity="0.3"/>
