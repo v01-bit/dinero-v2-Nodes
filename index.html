@@ -212,7 +212,7 @@ function pPos(n,gs,s){const a=nAbs(n,gs);return s==='left'?{x:a.x,y:a.y+n.h/2}:s
 
 /* ── Orthogonal routing constants ── */
 const WIRE_MARGIN=25; /* min distance wires keep from node edges */
-const WIRE_OFFSET=8;  /* parallel wire separation */
+const WIRE_SEP=16;    /* parallel wire separation — visible spacing between adjacent wires */
 
 /* Determine exit/entry sides: output=bottom for downward, top for upward, right/left for same-tier */
 function bestSides(cA,cB){
@@ -223,83 +223,100 @@ function bestSides(cA,cB){
   return[dx>0?'right':'left',dx>0?'left':'right'];
 }
 
-/* ── Orthogonal wire routing ──
-   Produces clean right-angle paths: exit → lane → travel → enter.
-   Wires route through invisible lanes outside node padding zones.
-   Parallel wires on the same path get offset to avoid stacking. */
-function makeWirePath(x1,y1,x2,y2,s1,s2,allNodes,gs,srcId,tgtId,wireIdx,allWireKeys){
+/* ── Orthogonal wire routing with lane-based separation ──
+   Each wire gets a unique lane offset so parallel wires never overlap.
+   The laneAlloc object maps each wire index to its offset, pre-computed
+   by grouping wires that share the same routing corridor. */
+function makeWirePath(x1,y1,x2,y2,s1,s2,allNodes,gs,srcId,tgtId,laneOffset){
   const M=WIRE_MARGIN;
-  /* Compute parallel offset for wires sharing similar paths */
-  let offset=0;
-  if(allWireKeys){
-    /* Count wires with same source or target port to offset them */
-    const key=srcId+'→'+tgtId;
-    const idx=allWireKeys.indexOf(key);
-    const sameSource=allWireKeys.filter(k=>k.startsWith(srcId+'→')).length;
-    const mySourceIdx=allWireKeys.filter(k=>k.startsWith(srcId+'→')).indexOf(key);
-    if(sameSource>1)offset=(mySourceIdx-(sameSource-1)/2)*WIRE_OFFSET;
-  }
+  const off=laneOffset||0;
 
-  /* ── Same side exit/enter (both bottom→top, etc): standard orthogonal ── */
+  /* ── Same side exit/enter: standard orthogonal ── */
   if(s1==='bottom'&&s2==='top'){
-    /* Downward flow: exit bottom → go to midpoint-Y lane → horizontal to target X → enter top */
-    const exitY=y1+M;
-    const enterY=y2-M;
-    const midY=(exitY+enterY)/2;
-    return`M${x1},${y1} L${x1},${midY+offset} L${x2},${midY+offset} L${x2},${y2}`;
+    const midY=(y1+y2)/2;
+    return`M${x1},${y1} L${x1},${midY+off} L${x2},${midY+off} L${x2},${y2}`;
   }
   if(s1==='top'&&s2==='bottom'){
-    /* Upward flow */
-    const exitY=y1-M;
-    const enterY=y2+M;
-    const midY=(exitY+enterY)/2;
-    return`M${x1},${y1} L${x1},${midY+offset} L${x2},${midY+offset} L${x2},${y2}`;
+    const midY=(y1+y2)/2;
+    return`M${x1},${y1} L${x1},${midY+off} L${x2},${midY+off} L${x2},${y2}`;
   }
   if(s1==='right'&&s2==='left'){
-    /* Rightward flow */
-    const exitX=x1+M;
-    const enterX=x2-M;
-    const midX=(exitX+enterX)/2;
-    return`M${x1},${y1} L${midX+offset},${y1} L${midX+offset},${y2} L${x2},${y2}`;
+    const midX=(x1+x2)/2;
+    return`M${x1},${y1} L${midX+off},${y1} L${midX+off},${y2} L${x2},${y2}`;
   }
   if(s1==='left'&&s2==='right'){
-    /* Leftward flow */
-    const exitX=x1-M;
-    const enterX=x2+M;
-    const midX=(exitX+enterX)/2;
-    return`M${x1},${y1} L${midX+offset},${y1} L${midX+offset},${y2} L${x2},${y2}`;
+    const midX=(x1+x2)/2;
+    return`M${x1},${y1} L${midX+off},${y1} L${midX+off},${y2} L${x2},${y2}`;
   }
 
-  /* ── U-turn and mixed cases: 5-segment routing ── */
+  /* ── U-turn cases ── */
   if(s1==='bottom'&&s2==='bottom'){
     const laneY=Math.max(y1,y2)+M*2;
-    return`M${x1},${y1} L${x1},${laneY+offset} L${x2},${laneY+offset} L${x2},${y2}`;
+    return`M${x1},${y1} L${x1},${laneY+off} L${x2},${laneY+off} L${x2},${y2}`;
   }
   if(s1==='top'&&s2==='top'){
     const laneY=Math.min(y1,y2)-M*2;
-    return`M${x1},${y1} L${x1},${laneY+offset} L${x2},${laneY+offset} L${x2},${y2}`;
+    return`M${x1},${y1} L${x1},${laneY+off} L${x2},${laneY+off} L${x2},${y2}`;
   }
   if(s1==='right'&&s2==='right'){
     const laneX=Math.max(x1,x2)+M*2;
-    return`M${x1},${y1} L${laneX+offset},${y1} L${laneX+offset},${y2} L${x2},${y2}`;
+    return`M${x1},${y1} L${laneX+off},${y1} L${laneX+off},${y2} L${x2},${y2}`;
   }
   if(s1==='left'&&s2==='left'){
     const laneX=Math.min(x1,x2)-M*2;
-    return`M${x1},${y1} L${laneX+offset},${y1} L${laneX+offset},${y2} L${x2},${y2}`;
+    return`M${x1},${y1} L${laneX+off},${y1} L${laneX+off},${y2} L${x2},${y2}`;
   }
 
-  /* ── Cross-axis routing (e.g. bottom→left): 2-turn path ── */
+  /* ── Cross-axis routing ── */
   if((s1==='bottom'||s1==='top')&&(s2==='left'||s2==='right')){
-    const exitY=s1==='bottom'?y1+M:y1-M;
-    return`M${x1},${y1} L${x1},${y2+offset} L${x2},${y2+offset}`;
+    return`M${x1},${y1} L${x1},${y2+off} L${x2},${y2+off}`;
   }
   if((s1==='left'||s1==='right')&&(s2==='top'||s2==='bottom')){
-    const enterY=s2==='top'?y2-M:y2+M;
-    return`M${x1},${y1} L${x2+offset},${y1} L${x2+offset},${y2}`;
+    return`M${x1},${y1} L${x2+off},${y1} L${x2+off},${y2}`;
   }
 
-  /* Fallback: simple L-bend */
+  /* Fallback: L-bend */
   return`M${x1},${y1} L${x1},${y2} L${x2},${y2}`;
+}
+
+/* ── Lane allocator: groups wires sharing the same corridor and assigns offsets ──
+   A "corridor" is defined by the routing direction + the midpoint of the shared segment.
+   Wires in the same corridor get evenly spread around the centre line. */
+function allocateLanes(wireInfos){
+  /* wireInfos: [{idx, s1, s2, x1, y1, x2, y2}] */
+  const LANE_THRESH=60; /* wires within this distance share a corridor */
+  const buckets=new Map(); /* corridorKey → [wireIdx, ...] */
+
+  wireInfos.forEach(wi=>{
+    /* Determine which axis the shared segment runs on and its approximate position */
+    let corridorKey;
+    if((wi.s1==='bottom'&&wi.s2==='top')||(wi.s1==='top'&&wi.s2==='bottom')){
+      /* Horizontal shared segment at midY */
+      const midY=Math.round((wi.y1+wi.y2)/2/LANE_THRESH)*LANE_THRESH;
+      corridorKey='H'+midY;
+    }else if((wi.s1==='right'&&wi.s2==='left')||(wi.s1==='left'&&wi.s2==='right')){
+      /* Vertical shared segment at midX */
+      const midX=Math.round((wi.x1+wi.x2)/2/LANE_THRESH)*LANE_THRESH;
+      corridorKey='V'+midX;
+    }else if(wi.s1==='bottom'&&wi.s2==='bottom'||wi.s1==='top'&&wi.s2==='top'){
+      const laneY=wi.s1==='bottom'?Math.max(wi.y1,wi.y2):Math.min(wi.y1,wi.y2);
+      corridorKey='U'+Math.round(laneY/LANE_THRESH)*LANE_THRESH;
+    }else{
+      corridorKey='X'+wi.idx; /* unique — no grouping */
+    }
+    if(!buckets.has(corridorKey))buckets.set(corridorKey,[]);
+    buckets.get(corridorKey).push(wi.idx);
+  });
+
+  /* Assign offsets: centre the group around 0, spread by WIRE_SEP */
+  const offsets={};
+  buckets.forEach(indices=>{
+    const n=indices.length;
+    indices.forEach((idx,i)=>{
+      offsets[idx]=(i-(n-1)/2)*WIRE_SEP;
+    });
+  });
+  return offsets;
 }
 
 function rectsOverlap(a,b,gap){return a.x<b.x+b.w+gap&&a.x+a.w+gap>b.x&&a.y<b.y+b.h+gap&&a.y+a.h+gap>b.y}
@@ -877,19 +894,28 @@ function App(){
 
   /* ── wire data ── */
   const wireData=useMemo(()=>{
-    /* Build wire keys for parallel offset calculation */
-    const wireKeys=wires.map(w=>w[0]+'→'+w[1]);
-    return wires.map((w,i)=>{
+    /* Phase 1: compute sides and port positions for all wires */
+    const prepass=wires.map((w,i)=>{
       const sN=nodes.find(n=>n.id===w[0]),tN=nodes.find(n=>n.id===w[1]);
       if(!sN||!tN)return null;
       const cA=nCtr(sN,groups),cB=nCtr(tN,groups);
       const[sA,sB]=bestSides(cA,cB);
       const pA=pPos(sN,groups,sA),pB=pPos(tN,groups,sB);
-      const isErr=sN.status==='error';
-      const srcTier=tierMap[sN.gid]||'worker';
+      return{idx:i,sN,tN,sA,sB,pA,pB,s1:sA,s2:sB,x1:pA.x,y1:pA.y,x2:pB.x,y2:pB.y};
+    });
+    /* Phase 2: allocate lane offsets so parallel wires get separated */
+    const validPrepass=prepass.filter(Boolean);
+    const laneOffsets=allocateLanes(validPrepass);
+    /* Phase 3: build final wire paths with lane offsets */
+    return prepass.map((wp,i)=>{
+      if(!wp)return null;
+      const w=wires[i];
+      const isErr=wp.sN.status==='error';
+      const srcTier=tierMap[wp.sN.gid]||'worker';
       const accent=TIERS[srcTier].accent;
-      return{i,src:w[0],tgt:w[1],pA,pB,sA,sB,isErr,accent,
-        path:makeWirePath(pA.x,pA.y,pB.x,pB.y,sA,sB,nodes,groups,w[0],w[1],i,wireKeys)};
+      const off=laneOffsets[i]||0;
+      return{i,src:w[0],tgt:w[1],pA:wp.pA,pB:wp.pB,sA:wp.sA,sB:wp.sB,isErr,accent,
+        path:makeWirePath(wp.pA.x,wp.pA.y,wp.pB.x,wp.pB.y,wp.sA,wp.sB,nodes,groups,w[0],w[1],off)};
     }).filter(Boolean);
   },[wires,nodes,groups]);
 
