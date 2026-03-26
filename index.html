@@ -1885,7 +1885,8 @@ function App(){
             }
           }
           const prompt=w.constraints?w.prompt.trim()+'\n\nConstraints: '+w.constraints.trim():w.prompt.trim();
-          setNodes(ns=>[...ns,{id,gid:targetGid,label:w.name.trim(),x:30,y:30,w:NW,h:NH,model:w.model,status:'ok',auth:false,prompt}]);
+          const ports={top:[{id:id+':t0'}],bottom:[{id:id+':b0'}],right:[{id:id+':r0'}],left:[{id:id+':l0'}]};
+          setNodes(ns=>[...ns,{id,gid:targetGid,label:w.name.trim(),x:30,y:30,w:NW,h:NH,model:w.model,status:'ok',auth:false,prompt,ports}]);
           setWizard(null);
           setSelected(id);
           setPanelNode(id);
