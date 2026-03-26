@@ -121,12 +121,14 @@ const MODELS=[
   {id:'embeddings',label:'Embeddings',cost:'$',color:'#9860d8'},
   {id:'custom',label:'Custom',cost:'—',color:'#666'},
 ];
-const GH=84, GAP=50, MIN_GW=500, MIN_GH=220, MIN_NW=400, MIN_NH=160;
+const GH=84, GAP=50, MIN_GW=500, MIN_GH=220, MIN_NW=400, MIN_NH=80;
 const tierMap={orchestrator:'orchestrator',managers:'manager',workers:'worker',infra:'infra'};
 
 /* ═══════════════════ DEFAULT DATA ═══════════════════ */
 /* Responsive layout: sizes and positions adapt to viewport */
 const NW=820, NH=400, NS=40; /* default node width, height, spacing */
+const THRESH_PROMPT=NH;       /* below default: hide prompt text + label first */
+const THRESH_MODEL=NH-130;    /* further down: hide model row — just header remains */
 const EP=40; /* edge padding inside groups — room for wire lanes */
 const NG=160; /* horizontal gap between nodes — routing clearance */
 /* ── Wire routing constants ── */
@@ -372,6 +374,32 @@ function autoExpandPorts(nodes,wires){
         const idx=defs.length;
         const letter=side[0];
         defs.push({id:nd.id+':'+letter+idx});
+        changed=true;
+      }
+    });
+  });
+  return changed;
+}
+
+/* Remove excess spare ports — keep exactly 1 free per side */
+function autoShrinkPorts(nodes,wires){
+  const usedPorts=new Set();
+  wires.forEach(w=>{if(w.srcPort)usedPorts.add(w.srcPort);if(w.tgtPort)usedPorts.add(w.tgtPort)});
+  let changed=false;
+  nodes.forEach(nd=>{
+    if(!nd.ports)return;
+    SIDES.forEach(side=>{
+      const defs=nd.ports[side];
+      if(!defs||defs.length<=1)return;
+      /* Count free (unused) ports on this side */
+      const freeIndices=[];
+      defs.forEach((d,i)=>{if(!usedPorts.has(d.id))freeIndices.push(i)});
+      /* Keep exactly 1 free — remove extras from the end */
+      if(freeIndices.length>1){
+        /* Remove all free ports except the first one */
+        const toKeep=new Set([freeIndices[0]]);
+        const toRemove=new Set(freeIndices.filter(i=>!toKeep.has(i)));
+        nd.ports[side]=defs.filter((_,i)=>!toRemove.has(i));
         changed=true;
       }
     });
@@ -677,8 +705,10 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
     return()=>el.removeEventListener('wheel',stopWheel);
   },[]);
   const[tick,setTick]=useState(0);
-  const[logs,setLogs]=useState(()=>Array.from({length:12},()=>({ts:ts(),msg:pick(logGen[tier]())})));
-  const[activity,setActivity]=useState(()=>activityGen[tier]());
+  const logFn=logGen[tier]||logGen.worker;
+  const actFn=activityGen[tier]||activityGen.worker;
+  const[logs,setLogs]=useState(()=>Array.from({length:12},()=>({ts:ts(),msg:pick(logFn())})));
+  const[activity,setActivity]=useState(()=>actFn());
   const[collapsed,setCollapsed]=useState({});
   const accent=isErr?'#cc3333':t.accent;
   const sb='sb-'+t.accent.replace('#','');
@@ -715,10 +745,10 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
     const iv=setInterval(()=>{
       setTick(t=>t+1);
       /* Add new log entry */
-      setLogs(ls=>[{ts:ts(),msg:pick(logGen[tier]()),isNew:true},...ls.slice(0,49)]);
+      setLogs(ls=>[{ts:ts(),msg:pick((logGen[tier]||logGen.worker)()),isNew:true},...ls.slice(0,49)]);
     },2800);
     const iv2=setInterval(()=>{
-      setActivity(activityGen[tier]());
+      setActivity((activityGen[tier]||activityGen.worker)());
     },6000);
     return()=>{clearInterval(iv);clearInterval(iv2)};
   },[tier]);
@@ -900,7 +930,7 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
               <div style={{fontSize:9,color:'#666',letterSpacing:1,marginBottom:4,fontWeight:700}}>UPSTREAM (INPUTS FROM)</div>
               {upstream.map((u,i)=>{
                 const ut=tierMap[u.gid]||'worker';
-                const uc=TIERS[ut].accent;
+                const uc=(TIERS[ut]||TIERS.worker).accent;
                 return(<div key={i} className="sp-dep">
                   <div style={{width:6,height:6,borderRadius:3,background:uc,boxShadow:`0 0 4px ${uc}66`}}/>
                   <span style={{color:'#bbb',fontSize:11}}>{u.label}</span>
@@ -913,7 +943,7 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
               <div style={{fontSize:9,color:'#666',letterSpacing:1,margin:'8px 0 4px',fontWeight:700}}>DOWNSTREAM (OUTPUTS TO)</div>
               {downstream.map((d,i)=>{
                 const dt=tierMap[d.gid]||'worker';
-                const dc=TIERS[dt].accent;
+                const dc=(TIERS[dt]||TIERS.worker).accent;
                 return(<div key={i} className="sp-dep">
                   <span style={{color:accent,fontSize:11,fontWeight:600}}>{nd.label}</span>
                   <span className="sp-dep-arrow">→</span>
@@ -1019,6 +1049,8 @@ function App(){
   const sideAssignRef=useRef({}); /* { 'src→tgt': {srcSide,tgtSide,srcLocked?,tgtLocked?} } */
   const [nodeSizes,setNodeSizes]=useState({}); /* {nodeId:{w,h}} measured from DOM */
   const manualGroupSizes=useRef({}); /* {groupId:{w,h}} — floor set by manual resize */
+  const customThemesRef=useRef({}); /* {groupId:{nodeBg,headerBg,accent,text}} — custom group themes */
+  const getTheme=k=>TIERS[k]||customThemesRef.current[k]||TIERS.worker;
   const initialFitRef=useRef(false); /* true after first auto-fit + re-zoom */
 
   const toCanvas=useCallback((cx,cy)=>({x:(cx-pan.x)/zoom,y:(cy-pan.y)/zoom}),[pan,zoom]);
@@ -1171,7 +1203,7 @@ function App(){
       const sA=pA.side, sB=pB.side;
       const isErr=sN.status==='error';
       const srcTier=tierMap[sN.gid]||'worker';
-      const accent=TIERS[srcTier].accent;
+      const accent=getTheme(srcTier).accent;
       const path=makeSimpleBezier(pA.x,pA.y,pB.x,pB.y,sA,sB);
       return{i,src:w.src,tgt:w.tgt,srcPort:w.srcPort,tgtPort:w.tgtPort,pA,pB,sA,sB,isErr,accent,path};
     }).filter(Boolean);
@@ -1219,7 +1251,11 @@ function App(){
         if(wd)setDyingWires([{path:wd.path}]);
         /* Release side lock for the disconnected wire */
         delete sideAssignRef.current[ew.src+'\u2192'+ew.tgt];
-        setWires(ws=>ws.filter((_,i)=>i!==wireIdx));
+        setWires(ws=>{
+          const nw=ws.filter((_,i)=>i!==wireIdx);
+          if(autoShrinkPorts(nodes,nw))setNodes([...nodes]);
+          return nw;
+        });
         setWiringFrom({nid:otherNid,portId:otherPortId,side:otherSide,portPos:otherPos,isDragDisconnect:true});
         setWiringMouse(toCanvas(e.clientX,e.clientY));
       }else{
@@ -1593,7 +1629,11 @@ function App(){
         delete sideAssignRef.current[ew.src+'\u2192'+ew.tgt];
         const wd=wireData.find(w=>w.i===wireIdx);
         if(wd)setDyingWires([{path:wd.path}]);
-        setWires(ws=>ws.filter((_,i)=>i!==wireIdx));
+        setWires(ws=>{
+          const nw=ws.filter((_,i)=>i!==wireIdx);
+          if(autoShrinkPorts(nodes,nw))setNodes([...nodes]);
+          return nw;
+        });
       }
       return;
     }
@@ -1605,7 +1645,11 @@ function App(){
       if(ew)delete sideAssignRef.current[ew.src+'\u2192'+ew.tgt];
       const wd=wireData.find(w=>w.i===idx);
       if(wd)setDyingWires([{path:wd.path}]);
-      setWires(ws=>ws.filter((_,i)=>i!==idx));
+      setWires(ws=>{
+        const nw=ws.filter((_,i)=>i!==idx);
+        if(autoShrinkPorts(nodes,nw))setNodes([...nodes]);
+        return nw;
+      });
     }
   },[wires,wireData]);
 
@@ -1709,7 +1753,7 @@ function App(){
 
         {/* GROUPS */}
         {groups.map(g=>{
-          const t=TIERS[g.tier]||TIERS.worker;
+          const t=getTheme(g.tier);
           return(
             <div key={g.id} style={{position:'absolute',left:g.x,top:g.y,width:g.w,height:g.h,zIndex:2,pointerEvents:'none',
               opacity:loadPhase>=1?1:0,
@@ -1724,11 +1768,11 @@ function App(){
                   <span style={{fontSize:22,fontWeight:700,letterSpacing:2,color:t.text,textTransform:'uppercase',flex:1}}>
                     {g.label}</span>
                   <button onClick={e=>{e.stopPropagation();addNode(g.id)}} style={{
-                    background:'transparent',border:`2px solid ${t.accent}33`,borderRadius:6,
-                    color:t.text,fontSize:22,padding:'10px 22px',cursor:'pointer',fontWeight:600,
-                    opacity:0.4,transition:'opacity 0.15s'}}
-                    onMouseEnter={e=>e.target.style.opacity='0.8'}
-                    onMouseLeave={e=>e.target.style.opacity='0.4'}>+ Node</button>
+                    background:t.accent+'22',border:`2px solid ${t.accent}88`,borderRadius:8,
+                    color:t.text,fontSize:28,padding:'14px 32px',cursor:'pointer',fontWeight:700,
+                    opacity:0.85,transition:'opacity 0.15s, background 0.15s'}}
+                    onMouseEnter={e=>{e.target.style.opacity='1';e.target.style.background=t.accent+'44'}}
+                    onMouseLeave={e=>{e.target.style.opacity='0.85';e.target.style.background=t.accent+'22'}}>+ Node</button>
                 </div>
               </div>
               {/* Resize handles — outside overflow:hidden, higher z so they sit above nodes */}
@@ -1741,7 +1785,7 @@ function App(){
         {nodes.map((nd,ni)=>{
           const g=groups.find(g=>g.id===nd.gid);if(!g)return null;
           const tier=tierMap[nd.gid]||'worker';
-          const t=TIERS[tier];
+          const t=getTheme(tier);
           const abs=nAbs(nd,groups);
           const isErr=nd.status==='error';
           const isSel=selected===nd.id;
@@ -1762,7 +1806,7 @@ function App(){
               display:'flex',flexDirection:'column',cursor:'pointer',
               boxShadow:isErr?'inset 0 0 12px #cc333315':'none',
               animation:loadPhase<4?(loadPhase>=2?`nodeFadeIn 0.35s ease-out ${nodeDelay}s both`:'none'):isErr?'errorPulse 3s ease infinite':'none',
-              opacity:loadPhase<2?0:(selected!==null&&!isSel&&!connectedToSel)?0.25:undefined,
+              opacity:loadPhase<2?0:(selected!==null&&!isSel&&!connectedToSel)?0.45:undefined,
               userSelect:'none',overflow:'visible',
               transition:'border 0.15s, box-shadow 0.15s',
             }}>
@@ -1811,9 +1855,9 @@ function App(){
                       display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4}}>✕</button>
                 </div>
 
-                {/* Body — click opens inspection panel */}
-                {!simplified&&<>
-                  {/* MODEL ROW */}
+                {/* Body — progressive collapse: prompt first, then model, then just header */}
+                {/* MODEL ROW — hides below THRESH_MODEL */}
+                {!simplified&&nd.h>=THRESH_MODEL&&(
                   <div style={{padding:'22px 32px',borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
                     display:'flex',alignItems:'center',gap:16,flexShrink:0,cursor:'pointer'}}>
                     <span style={{fontSize:20,fontWeight:700,color:'#666',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
@@ -1821,19 +1865,28 @@ function App(){
                       onChange={v=>updateNode(nd.id,{model:v})}
                       models={MODELS} nodeBg={t.nodeBg} accent={t.accent} color={mdl.color}/>
                   </div>
-                  {/* BEHAVIOUR PROMPT — read-only display */}
+                )}
+                {/* BEHAVIOUR PROMPT label — hides below THRESH_PROMPT */}
+                {!simplified&&nd.h>=THRESH_PROMPT&&(
                   <div style={{padding:'26px 32px 0',flexShrink:0}}>
                     <span style={{fontSize:20,fontWeight:700,color:'#666',letterSpacing:1.5,marginBottom:14,
                       textTransform:'uppercase',display:'block'}}>BEHAVIOUR PROMPT</span>
                   </div>
-                  <div className={sb} data-node-scroll="1"
-                    style={{flex:1,minHeight:0,
+                )}
+                {/* Prompt text — hides below THRESH_PROMPT */}
+                {!simplified&&nd.h>=THRESH_PROMPT&&(()=>{
+                  const lineH=Math.ceil(26*1.35);
+                  const threeLines=lineH*3;
+                  const isDefault=nd.h<=NH;
+                  return <div className={sb} data-node-scroll="1"
+                    style={{flex:isDefault?'none':1,height:isDefault?threeLines:undefined,
+                      minHeight:isDefault?undefined:0,
                       overflow:'auto',margin:'0 32px',
                       overscrollBehavior:'contain',pointerEvents:'auto'}}>
                     <div style={{fontSize:26,lineHeight:1.35,color:isErr?'#cc9999':t.text+'cc',
                       whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{nd.prompt}</div>
-                  </div>
-                </>}
+                  </div>;
+                })()}
               </div>
 
               {/* PORTS — positioned from immutable port definitions */}
@@ -1962,7 +2015,7 @@ function App(){
             if(!srcN)return null;
             const pp=wiringFrom.portPos;
             const srcTier=tierMap[srcN.gid]||'worker';
-            const accent=wiringFrom.isDragDisconnect?'#cc3333':TIERS[srcTier].accent;
+            const accent=wiringFrom.isDragDisconnect?'#cc3333':getTheme(srcTier).accent;
             const mx=wiringMouse.x,my=wiringMouse.y;
             /* Use snap target's side if snapped, otherwise opposite of source */
             const tgtSide=wiringMouse.side||oppositeSide(wiringFrom.side);
@@ -2043,7 +2096,7 @@ function App(){
         const nd=nodes.find(n=>n.id===panelNode);
         if(!nd)return null;
         const tier=tierMap[nd.gid]||'worker';
-        const t=TIERS[tier];
+        const t=getTheme(tier);
         const isErr=nd.status==='error';
         return <LivePanel nd={nd} tier={tier} t={t} isErr={isErr}
           wires={wires} nodes={nodes} groups={groups} updateNode={updateNode}
@@ -2068,18 +2121,34 @@ function App(){
       {wizard&&(()=>{
         const w=wizard;
         const tier=w.tier||'worker';
-        const t=TIERS[tier];
-        const canCreate=w.name.trim()&&w.prompt.trim();
-        const TIER_DESC={orchestrator:'Top-level coordinator',manager:'Domain manager',worker:'Task executor',infra:'Infrastructure service'};
+        const customAccent=w.customColor||'#e05050';
+        /* Build a dynamic tier theme for custom groups */
+        const customTier={nodeBg:'#1a1a1a',headerBg:'#222',accent:customAccent,text:customAccent};
+        const t=tier==='custom'?customTier:(TIERS[tier]||TIERS.worker);
+        const canCreate=w.name.trim()&&w.prompt.trim()&&(tier!=='custom'||(w.groupName&&w.groupName.trim()));
+        const TIER_DESC={orchestrator:'Top-level coordinator',manager:'Domain manager',worker:'Task executor',infra:'Infrastructure service',custom:'User-defined group'};
+        const CUSTOM_COLORS=['#e05050','#e88030','#50b868','#40b8d8','#6080e0','#c060d8','#d0a040','#e07098'];
         const wizUpdate=patch=>setWizard(wz=>({...wz,...patch}));
         const doCreate=()=>{
           if(!canCreate)return;
+          try{
           const id=newId();
           const gid=w.gid;
           /* If tier changed from group's tier, find/create matching group */
           let targetGid=gid;
           const gTier=tierMap[gid];
-          if(gTier!==tier){
+          if(tier==='custom'){
+            /* Always create a new custom group with user-defined name and color */
+            targetGid='custom-'+Date.now();
+            const maxX=groups.reduce((mx,g)=>Math.max(mx,g.x+g.w),0);
+            const groupLabel=(w.groupName&&w.groupName.trim())||'Custom';
+            const ca=customAccent;
+            /* Register theme so getTheme() can find it */
+            customThemesRef.current[targetGid]={nodeBg:'#1a1a1a',headerBg:'#222',accent:ca,text:ca};
+            tierMap[targetGid]=targetGid;
+            const newGroup={id:targetGid,label:groupLabel,tier:targetGid,x:maxX+60,y:100,w:NW+EP*2,h:NH+EP*2+GH};
+            setGroups(gs=>{try{return pushGroups(targetGid,[...gs,newGroup])}catch(e){return[...gs,newGroup]}});
+          } else if(gTier!==tier){
             const existing=groups.find(g=>tierMap[g.id]===tier);
             if(existing)targetGid=existing.id;
             else{
@@ -2091,10 +2160,26 @@ function App(){
           }
           const prompt=w.constraints?w.prompt.trim()+'\n\nConstraints: '+w.constraints.trim():w.prompt.trim();
           const ports={top:[{id:id+':t0'}],bottom:[{id:id+':b0'}],right:[{id:id+':r0'}],left:[{id:id+':l0'}]};
-          setNodes(ns=>[...ns,{id,gid:targetGid,label:w.name.trim(),x:30,y:30,w:NW,h:NH,model:w.model,status:'ok',auth:false,prompt,ports}]);
+          /* Smart placement — find first non-overlapping slot in the group */
+          const groupNodes=nodes.filter(n=>n.gid===targetGid);
+          let placeX=EP, placeY=EP;
+          const slotW=NW+NG, slotH=NH+VG;
+          const tg=groups.find(g=>g.id===targetGid);
+          const cols=tg?Math.max(1,Math.floor((tg.w-EP)/(slotW))):4;
+          let placed=false;
+          for(let row=0;row<20&&!placed;row++){
+            for(let col=0;col<cols&&!placed;col++){
+              const cx=EP+col*slotW, cy=EP+row*slotH;
+              const overlap=groupNodes.some(n=>
+                cx<n.x+n.w+NG&&cx+NW+NG>n.x&&cy<n.y+n.h+VG&&cy+NH+VG>n.y);
+              if(!overlap){placeX=cx;placeY=cy;placed=true;}
+            }
+          }
+          setNodes(ns=>[...ns,{id,gid:targetGid,label:w.name.trim(),x:placeX,y:placeY,w:NW,h:NH,model:w.model,status:'ok',auth:false,prompt,ports}]);
           setWizard(null);
           setSelected(id);
           setPanelNode(id);
+          }catch(err){console.error('doCreate error:',err);setWizard(null);}
         };
         return(
           <div className="wiz-overlay" onClick={()=>setWizard(null)}>
@@ -2127,8 +2212,32 @@ function App(){
                         </div>
                       );
                     })}
+                    {/* Custom group option */}
+                    <div className="wiz-tier-btn" onClick={()=>wizUpdate({tier:'custom'})}
+                      style={{background:'#1a1a1a',borderColor:tier==='custom'?customAccent:'transparent'}}>
+                      <span className="wiz-tier-name" style={{color:customAccent}}>Custom</span>
+                      <span className="wiz-tier-desc" style={{color:customAccent}}>User-defined group</span>
+                    </div>
                   </div>
                 </div>
+
+                {/* CUSTOM GROUP OPTIONS — only shown when "Custom" tier selected */}
+                {tier==='custom'&&(
+                  <div className="wiz-field">
+                    <label>Group Name</label>
+                    <input value={w.groupName||''} onChange={e=>wizUpdate({groupName:e.target.value})}
+                      placeholder="e.g. Analytics, Signals, Execution..." spellCheck="false"/>
+                    <label style={{marginTop:10}}>Group Colour</label>
+                    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6}}>
+                      {CUSTOM_COLORS.map(c=>(
+                        <div key={c} onClick={()=>wizUpdate({customColor:c})}
+                          style={{width:32,height:32,borderRadius:6,background:c,cursor:'pointer',
+                            border:customAccent===c?'3px solid #fff':'3px solid transparent',
+                            transition:'border 0.15s'}}/>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* MODEL */}
                 <div className="wiz-field">
