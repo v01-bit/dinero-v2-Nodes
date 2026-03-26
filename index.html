@@ -684,7 +684,7 @@ function ModelDropdown({value,onChange,models,nodeBg,accent,color}){
 }
 
 /* ═══════════════════ LIVE PANEL COMPONENT ═══════════════════ */
-function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
+function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode,dirtyRef,exitRef,exitPromptRef}){
   const panelRef=useRef(null);
   const [panelW,setPanelW]=useState(568);
   const dragRef=useRef(null);
@@ -721,7 +721,8 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
   /* ── Dirty tracking for save flow ── */
   const[draft,setDraft]=useState({label:nd.label,model:nd.model,prompt:nd.prompt});
   const[saved,setSaved]=useState(false);
-  const[confirmSave,setConfirmSave]=useState(false);
+  const[showExitPrompt,_setShowExitPrompt]=useState(false);
+  const setShowExitPrompt=v=>{_setShowExitPrompt(v);if(exitPromptRef)exitPromptRef.current=v};
   const draftRef=useRef(draft);
   draftRef.current=draft;
   const prevNidRef=useRef(nd.id);
@@ -738,11 +739,12 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
     }
     prevNodeRef.current={label:nd.label,model:nd.model,prompt:nd.prompt};
     setDraft({label:nd.label,model:nd.model,prompt:nd.prompt});
-    setSaved(false);setConfirmSave(false);
+    setSaved(false);
   },[nd.id]);
   const isDirty=draft.label!==nd.label||draft.model!==nd.model||draft.prompt!==nd.prompt;
-  const doSave=()=>{setConfirmSave(true)};
-  const doConfirmSave=()=>{updateNode(nd.id,draft);setSaved(true);setConfirmSave(false);setTimeout(()=>setSaved(false),1500)};
+  useEffect(()=>{if(dirtyRef)dirtyRef.current=isDirty},[isDirty]);
+  useEffect(()=>{if(exitRef)exitRef.current=()=>setShowExitPrompt(true);return()=>{if(exitRef)exitRef.current=null}},[]);
+  const doSave=()=>{updateNode(nd.id,draft);setSaved(true);setTimeout(()=>setSaved(false),1500)};
   const doCancel=()=>setDraft({label:nd.label,model:nd.model,prompt:nd.prompt});
 
   /* Live simulation tick */
@@ -808,7 +810,7 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
               {tier} · {model.label} · <span style={{color:health.color}}>{health.label}</span>
             </div>
           </div>
-          <button onClick={()=>{if(isDirty){if(window.confirm('You have unsaved changes. Close anyway?'))onClose()}else onClose()}}
+          <button onClick={()=>{if(isDirty)setShowExitPrompt(true);else onClose()}}
             style={{background:'transparent',border:'none',
             color:'#666',fontSize:18,cursor:'pointer',lineHeight:1}}>✕</button>
         </div>
@@ -823,35 +825,8 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
         </div>
       </div>
 
-      {/* ── SAVE BAR (sticky when dirty) ── */}
-      {isDirty&&<div style={{padding:'8px 16px',background:accent+'18',borderBottom:`1px solid ${accent}33`,
-        display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-        <span style={{flex:1,fontSize:11,color:accent,fontWeight:600}}>Unsaved changes</span>
-        <button onClick={doCancel} style={{fontSize:11,padding:'4px 12px',borderRadius:5,
-          border:'1px solid #55555566',background:'transparent',color:'#999',cursor:'pointer'}}>Cancel</button>
-        <button onClick={doSave} style={{fontSize:11,padding:'4px 14px',borderRadius:5,
-          border:`1px solid ${accent}66`,background:accent+'22',color:t.text,cursor:'pointer',fontWeight:600}}>Save</button>
-      </div>}
       {saved&&<div style={{padding:'6px 16px',background:'#28a74520',borderBottom:'1px solid #28a74533',
         fontSize:11,color:'#28a745',fontWeight:600,flexShrink:0,textAlign:'center'}}>Changes saved</div>}
-
-      {/* ── SAVE CONFIRMATION OVERLAY ── */}
-      {confirmSave&&<div style={{position:'absolute',inset:0,zIndex:110,background:'rgba(0,0,0,0.6)',
-        display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-        <div style={{background:'#252525',border:'1px solid #444',borderRadius:12,padding:'24px 28px',
-          maxWidth:320,boxShadow:'0 8px 40px rgba(0,0,0,0.5)'}}>
-          <div style={{fontSize:14,fontWeight:700,color:'#e0e0e0',marginBottom:8}}>Save Changes?</div>
-          <div style={{fontSize:12,color:'#999',lineHeight:1.5,marginBottom:18}}>
-            Are you sure you want to save these changes to <strong style={{color:accent}}>{draft.label}</strong>?
-          </div>
-          <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-            <button onClick={()=>setConfirmSave(false)} style={{padding:'6px 16px',borderRadius:6,
-              border:'1px solid #555',background:'#333',color:'#ccc',fontSize:12,cursor:'pointer',fontWeight:600}}>Cancel</button>
-            <button onClick={doConfirmSave} style={{padding:'6px 16px',borderRadius:6,
-              border:`1px solid ${accent}66`,background:accent+'22',color:t.text,fontSize:12,cursor:'pointer',fontWeight:600}}>Save</button>
-          </div>
-        </div>
-      </div>}
 
       {/* ── SCROLLABLE BODY ── */}
       <div style={{flex:1,overflow:'auto',padding:'12px 14px',overscrollBehavior:'contain'}} className={sb}>
@@ -888,6 +863,12 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
                 borderRadius:6,border:`1px solid ${isDirty?accent+'44':'#ffffff0a'}`,background:'#ffffff04',
                 color:isErr?'#cc9999':'#bbb',resize:'vertical',fontFamily:'inherit',
                 outline:'none',overscrollBehavior:'contain',transition:'border-color 0.15s'}}/>
+            {isDirty&&<div style={{display:'flex',gap:8,justifyContent:'flex-end',marginTop:8}}>
+              <button onClick={doCancel} style={{fontSize:11,padding:'5px 14px',borderRadius:5,
+                border:'1px solid #55555566',background:'transparent',color:'#999',cursor:'pointer'}}>Cancel</button>
+              <button onClick={doSave} style={{fontSize:11,padding:'5px 14px',borderRadius:5,
+                border:`1px solid ${accent}66`,background:accent+'22',color:t.text,cursor:'pointer',fontWeight:600}}>Save</button>
+            </div>}
           </div>}
         </div>
 
@@ -1002,6 +983,25 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
         {/* Bottom spacer */}
         <div style={{height:20}}/>
       </div>
+
+      {/* ── EXIT PROMPT when closing with unsaved changes ── */}
+      {showExitPrompt&&<div style={{position:'absolute',inset:0,zIndex:110,background:'rgba(0,0,0,0.6)',
+        display:'flex',alignItems:'center',justifyContent:'center',padding:24}}
+        onClick={e=>e.stopPropagation()}>
+        <div style={{background:'#252525',border:'1px solid #444',borderRadius:12,padding:'24px 28px',
+          maxWidth:320,boxShadow:'0 8px 40px rgba(0,0,0,0.5)'}}>
+          <div style={{fontSize:14,fontWeight:700,color:'#e0e0e0',marginBottom:8}}>Unsaved Changes</div>
+          <div style={{fontSize:12,color:'#999',lineHeight:1.5,marginBottom:18}}>
+            You have unsaved changes to <strong style={{color:accent}}>{draft.label}</strong>. What would you like to do?
+          </div>
+          <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+            <button onClick={()=>{setShowExitPrompt(false);doCancel();onClose()}} style={{padding:'6px 16px',borderRadius:6,
+              border:'1px solid #555',background:'#333',color:'#ccc',fontSize:12,cursor:'pointer',fontWeight:600}}>Discard</button>
+            <button onClick={()=>{setShowExitPrompt(false);doSave();setTimeout(onClose,100)}} style={{padding:'6px 16px',borderRadius:6,
+              border:`1px solid ${accent}66`,background:accent+'22',color:t.text,fontSize:12,cursor:'pointer',fontWeight:600}}>Save</button>
+          </div>
+        </div>
+      </div>}
     </div>
   );
 }
@@ -1034,6 +1034,9 @@ function App(){
   const[dyingWires,setDyingWires]=useState([]);
   const[modal,setModal]=useState(null); /* {type,id,msg,onConfirm} */
   const[panelNode,setPanelNode]=useState(null);
+  const panelDirtyRef=useRef(false);
+  const panelExitRef=useRef(null);
+  const panelExitPromptRef=useRef(false);
   const[hoverNode,setHoverNode]=useState(null);
   const[hoverWire,setHoverWire]=useState(null); /* wireIdx or null */
   const[debugPorts,setDebugPorts]=useState(false); /* toggle with D key */
@@ -1254,7 +1257,9 @@ function App(){
   /* ── MOUSE DOWN ── */
   const DRAG_THRESHOLD=5;
   const onMD=useCallback(e=>{
-    if(e.button!==0||modal||wizard)return;
+    if(e.button!==0||modal||wizard||panelExitPromptRef.current)return;
+    /* If click is inside the side panel, let it handle its own events */
+    if(e.target.closest('.panel-enter'))return;
     const tag=e.target.tagName;
     /* Buttons/options handle their own actions — let them through */
     if(tag==='BUTTON'||tag==='OPTION')return;
@@ -1337,8 +1342,9 @@ function App(){
     /* Cancel wiring on empty canvas click */
     if(wiringFrom){setWiringFrom(null);setWiringMouse(null);return}
 
-    /* PAN — clear selection and sidebar */
+    /* PAN — clear selection and sidebar (prompt if unsaved) */
     interRef.current={type:'panning',sx:e.clientX-pan.x,sy:e.clientY-pan.y};
+    if(panelDirtyRef.current){panelExitRef.current&&panelExitRef.current();return}
     setSelected(null);
     setPanelNode(null);
   },[nodes,groups,pan,zoom,wiringFrom,wires,modal,wizard,toCanvas,portPositions,portsByNode,wireData]);
@@ -1518,6 +1524,7 @@ function App(){
     switch(ir.type){
       case 'pending_node':
         /* Mouse released without moving past threshold = CLICK → open sidebar */
+        if(panelDirtyRef.current&&panelNode&&panelNode!==ir.id){panelExitRef.current&&panelExitRef.current();break}
         setSelected(ir.id);
         setPanelNode(prev=>prev===ir.id?null:ir.id);
         break;
@@ -1594,7 +1601,7 @@ function App(){
         if(wiringFrom){setWiringFrom(null);setWiringMouse(null)}
         else if(wizard){setWizard(null)}
         else if(modal){setModal(null)}
-        else if(panelNode){setPanelNode(null);setSelected(null)}
+        else if(panelNode){if(panelDirtyRef.current){panelExitRef.current&&panelExitRef.current()}else{setPanelNode(null);setSelected(null)}}
       }
       if(e.key==='d'||e.key==='D'){setDebugPorts(v=>!v)}
     };
@@ -2130,7 +2137,8 @@ function App(){
         const isErr=nd.status==='error';
         return <LivePanel nd={nd} tier={tier} t={t} isErr={isErr}
           wires={wires} nodes={nodes} groups={groups} updateNode={updateNode}
-          onClose={()=>{setPanelNode(null);setSelected(null)}}/>;
+          onClose={()=>{panelDirtyRef.current=false;setPanelNode(null);setSelected(null)}}
+          dirtyRef={panelDirtyRef} exitRef={panelExitRef} exitPromptRef={panelExitPromptRef}/>;
       })()}
 
       {/* DELETE CONFIRMATION MODAL */}
