@@ -866,6 +866,7 @@ function App(){
   const[modal,setModal]=useState(null); /* {type,id,msg,onConfirm} */
   const[panelNode,setPanelNode]=useState(null);
   const[hoverNode,setHoverNode]=useState(null);
+  const[hoverWire,setHoverWire]=useState(null); /* wireIdx or null */
 
   /* ── Page load animation: groups→nodes→wires ── */
   const[loadPhase,setLoadPhase]=useState(0);
@@ -1041,11 +1042,32 @@ function App(){
       case 'dragging_node':{
         const c=toCanvas(e.clientX,e.clientY);
         const{id,ox,oy}=ir;
-        setNodes(ns=>ns.map(n=>{
-          if(n.id!==id)return n;
-          const g=groups.find(g=>g.id===n.gid);if(!g)return n;
-          return{...n,x:c.x-ox-g.x,y:c.y-oy-g.y-GH-2};
-        }));
+        setNodes(ns=>{
+          const dragged=ns.find(n=>n.id===id);if(!dragged)return ns;
+          const g=groups.find(g=>g.id===dragged.gid);if(!g)return ns;
+          let nx=c.x-ox-g.x, ny=c.y-oy-g.y-GH-2;
+          /* ── Soft snap alignment ── */
+          const SNAP=15; /* snap threshold in canvas px */
+          const siblings=ns.filter(n=>n.id!==id&&n.gid===dragged.gid);
+          let snapX=null,snapY=null,bestDx=SNAP,bestDy=SNAP;
+          siblings.forEach(sib=>{
+            /* Horizontal alignment: snap x to match sibling x (column alignment) */
+            const dx=Math.abs(nx-sib.x);
+            if(dx<bestDx){bestDx=dx;snapX=sib.x}
+            /* Also snap to same x+w/2 centre alignment */
+            const cxD=Math.abs((nx+dragged.w/2)-(sib.x+sib.w/2));
+            if(cxD<bestDx){bestDx=cxD;snapX=sib.x+sib.w/2-dragged.w/2}
+            /* Vertical alignment: snap y to match sibling y (row alignment) */
+            const dy=Math.abs(ny-sib.y);
+            if(dy<bestDy){bestDy=dy;snapY=sib.y}
+            /* Centre-y alignment */
+            const cyD=Math.abs((ny+dragged.h/2)-(sib.y+sib.h/2));
+            if(cyD<bestDy){bestDy=cyD;snapY=sib.y+sib.h/2-dragged.h/2}
+          });
+          if(snapX!==null)nx=snapX;
+          if(snapY!==null)ny=snapY;
+          return ns.map(n=>n.id===id?{...n,x:nx,y:ny}:n);
+        });
         break;
       }
 
@@ -1561,26 +1583,46 @@ function App(){
               className="wire-dying" strokeLinecap="round" strokeDasharray="1000"/>
           ))}
 
-          {/* ACTIVE WIRES — smooth bezier curves, source-colored */}
-          {wireData.map(wd=>(
-            <g key={wd.i}>
-              {/* subtle shadow for depth */}
-              <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent} strokeWidth="4"
-                opacity={wd.isErr?0.04:0.06} pointerEvents="none" strokeLinecap="round"/>
-              {/* main cable — colored by SOURCE tier */}
+          {/* ACTIVE WIRES — smooth bezier curves with hover highlight */}
+          {wireData.map(wd=>{
+            const isHov=hoverWire===wd.i;
+            /* When any wire is hovered, dim all others */
+            const anyHov=hoverWire!==null;
+            /* Also highlight if hovered node is connected */
+            const nodeHov=hoverNode!==null&&(wd.src===hoverNode||wd.tgt===hoverNode);
+            const lit=isHov||nodeHov;
+            const dim=anyHov&&!lit||(hoverNode!==null&&!nodeHov);
+            const mainOpacity=wd.isErr?0.7:lit?0.9:dim?0.15:0.55;
+            const mainWidth=wd.isErr?2:lit?2.8:1.6;
+            const flowOpacity=lit?1:dim?0.2:0.8;
+            return(
+            <g key={wd.i}
+              onMouseEnter={()=>setHoverWire(wd.i)}
+              onMouseLeave={()=>setHoverWire(h=>h===wd.i?null:h)}>
+              {/* subtle shadow — brighter on hover */}
               <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent}
-                strokeWidth={wd.isErr?'2':'1.6'}
-                strokeDasharray={wd.isErr?'6 4':'none'} opacity={wd.isErr?0.7:0.55}
+                strokeWidth={lit?6:4} opacity={lit?0.12:dim?0.02:0.06}
+                pointerEvents="none" strokeLinecap="round"/>
+              {/* wide invisible hit area for hover detection */}
+              <path d={wd.path} fill="none" stroke="transparent" strokeWidth="14"
+                style={{pointerEvents:'stroke',cursor:'pointer'}}
+                data-wire={wd.i}/>
+              {/* main cable */}
+              <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent}
+                strokeWidth={mainWidth}
+                strokeDasharray={wd.isErr?'6 4':'none'} opacity={mainOpacity}
                 markerEnd={wd.isErr?'url(#arr-e)':'url(#arr)'}
-                data-wire={wd.i} style={{pointerEvents:'stroke',cursor:'pointer'}} strokeLinecap="round"/>
-              {/* flow particles — travelling dots along curve */}
+                pointerEvents="none" strokeLinecap="round"
+                style={{transition:'opacity 0.15s, stroke-width 0.15s'}}/>
+              {/* flow particles */}
               {!wd.isErr&&(
                 <path d={wd.path} fill="none" stroke={wd.accent} className="wire-flow"
-                  strokeWidth="2.2" strokeDasharray="4 18" opacity="0.8"
-                  strokeLinecap="round" pointerEvents="none"/>
+                  strokeWidth={lit?3:2.2} strokeDasharray="4 18" opacity={flowOpacity}
+                  strokeLinecap="round" pointerEvents="none"
+                  style={{transition:'opacity 0.15s'}}/>
               )}
-            </g>
-          ))}
+            </g>);
+          })}
 
           {/* TEMPORARY WIRE — direction-aware bezier preview while wiring */}
           {wiringFrom&&wiringMouse&&(()=>{
