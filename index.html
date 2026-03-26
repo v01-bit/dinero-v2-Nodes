@@ -18,8 +18,8 @@ select{-webkit-appearance:none;-moz-appearance:none;appearance:none;background-i
 select option{background:#1a1a1a;color:#ccc}
 textarea{resize:none}
 input,textarea,select{outline:none;border:none;font-family:inherit}
-@keyframes flowDash{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}
-.wire-flow{animation:flowDash 0.6s linear infinite}
+@keyframes flowDash{from{stroke-dashoffset:22}to{stroke-dashoffset:0}}
+.wire-flow{animation:flowDash 0.8s linear infinite}
 @keyframes wireRetract{0%{opacity:1;stroke-dashoffset:0}100%{opacity:0;stroke-dashoffset:1000}}
 @keyframes errorPulse{0%,100%{box-shadow:0 0 30px #cc333344,inset 0 0 15px #cc333311}50%{box-shadow:0 0 40px #cc333366,inset 0 0 20px #cc333322}}
 @keyframes portPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.4)}}
@@ -120,9 +120,9 @@ const tierMap={orchestrator:'orchestrator',managers:'manager',workers:'worker',i
 /* ═══════════════════ DEFAULT DATA ═══════════════════ */
 /* Responsive layout: sizes and positions adapt to viewport */
 const NW=380, NH=160, NS=40; /* default node width, height, spacing */
-const EP=40; /* edge padding inside groups */
-const NG=40; /* horizontal gap between nodes */
-const VG=50; /* vertical gap between node rows */
+const EP=50; /* edge padding inside groups — room for wire lanes */
+const NG=70; /* horizontal gap between nodes — routing clearance */
+const VG=80; /* vertical gap between node rows — routing clearance */
 /* Computed positions for evenly-spaced column layout within groups */
 const C0=EP, C1=EP+NW+NG, C2=EP+2*(NW+NG), C3=EP+3*(NW+NG); /* col x positions */
 const R0=EP, R1=EP+NH+VG; /* row y positions */
@@ -210,51 +210,96 @@ function nAbs(n,gs){const g=gs.find(g=>g.id===n.gid);return g?{x:g.x+n.x,y:g.y+G
 function nCtr(n,gs){const a=nAbs(n,gs);return{x:a.x+n.w/2,y:a.y+n.h/2}}
 function pPos(n,gs,s){const a=nAbs(n,gs);return s==='left'?{x:a.x,y:a.y+n.h/2}:s==='right'?{x:a.x+n.w,y:a.y+n.h/2}:s==='top'?{x:a.x+n.w/2,y:a.y}:{x:a.x+n.w/2,y:a.y+n.h}}
 
+/* ── Orthogonal routing constants ── */
+const WIRE_MARGIN=25; /* min distance wires keep from node edges */
+const WIRE_OFFSET=8;  /* parallel wire separation */
+
+/* Determine exit/entry sides: output=bottom for downward, top for upward, right/left for same-tier */
 function bestSides(cA,cB){
   const dx=cB.x-cA.x,dy=cB.y-cA.y;
-  if(Math.abs(dx)>Math.abs(dy)*0.6)return[dx>0?'right':'left',dx>0?'left':'right'];
-  return[dy>0?'bottom':'top',dy>0?'top':'bottom'];
+  /* Primarily vertical flow (tier hierarchy) */
+  if(Math.abs(dy)>Math.abs(dx)*0.3)return[dy>0?'bottom':'top',dy>0?'top':'bottom'];
+  /* Horizontal flow (same tier) */
+  return[dx>0?'right':'left',dx>0?'left':'right'];
 }
 
-/* Structured bezier routing — avoids all intermediate nodes, 2-pass collision avoidance */
-function makeWirePath(x1,y1,x2,y2,s1,s2,allNodes,gs,srcId,tgtId){
-  const dist=Math.sqrt((x2-x1)**2+(y2-y1)**2);
-  const cp=Math.max(90,Math.min(dist*0.45,300));
-  let cx1=x1,cy1=y1,cx2=x2,cy2=y2;
-  if(s1==='right')cx1+=cp;else if(s1==='left')cx1-=cp;
-  if(s1==='bottom')cy1+=cp;else if(s1==='top')cy1-=cp;
-  if(s2==='right')cx2+=cp;else if(s2==='left')cx2-=cp;
-  if(s2==='bottom')cy2+=cp;else if(s2==='top')cy2-=cp;
-
-  /* 2-pass collision avoidance with 20 sample points per pass */
-  const margin=40;
-  for(let pass=0;pass<2;pass++){
-    let pushX=0,pushY=0,hits=0;
-    const damping=pass===0?0.6:0.3;
-    for(let t=0.1;t<=0.9;t+=0.04){
-      const it=1-t;
-      const sx=it*it*it*x1+3*it*it*t*cx1+3*it*t*t*cx2+t*t*t*x2;
-      const sy=it*it*it*y1+3*it*it*t*cy1+3*it*t*t*cy2+t*t*t*y2;
-      for(const nd of allNodes){
-        if(nd.id===srcId||nd.id===tgtId)continue;
-        const a=nAbs(nd,gs);
-        const rx=a.x-margin,ry=a.y-margin,rw=nd.w+margin*2,rh=nd.h+margin*2;
-        if(sx>rx&&sx<rx+rw&&sy>ry&&sy<ry+rh){
-          const ncx=a.x+nd.w/2,ncy=a.y+nd.h/2;
-          const dx=sx-ncx,dy=sy-ncy;
-          const force=nd.h/2+80;
-          if(Math.abs(dy)>Math.abs(dx)){pushY+=(dy>0?force:-force)}
-          else{pushX+=(dx>0?force:-force)}
-          hits++;
-        }
-      }
-    }
-    if(hits>0){
-      const avgX=pushX/hits*damping, avgY=pushY/hits*damping;
-      cx1+=avgX;cy1+=avgY;cx2+=avgX;cy2+=avgY;
-    }else break; /* No collisions, skip second pass */
+/* ── Orthogonal wire routing ──
+   Produces clean right-angle paths: exit → lane → travel → enter.
+   Wires route through invisible lanes outside node padding zones.
+   Parallel wires on the same path get offset to avoid stacking. */
+function makeWirePath(x1,y1,x2,y2,s1,s2,allNodes,gs,srcId,tgtId,wireIdx,allWireKeys){
+  const M=WIRE_MARGIN;
+  /* Compute parallel offset for wires sharing similar paths */
+  let offset=0;
+  if(allWireKeys){
+    /* Count wires with same source or target port to offset them */
+    const key=srcId+'→'+tgtId;
+    const idx=allWireKeys.indexOf(key);
+    const sameSource=allWireKeys.filter(k=>k.startsWith(srcId+'→')).length;
+    const mySourceIdx=allWireKeys.filter(k=>k.startsWith(srcId+'→')).indexOf(key);
+    if(sameSource>1)offset=(mySourceIdx-(sameSource-1)/2)*WIRE_OFFSET;
   }
-  return`M${x1},${y1} C${cx1},${cy1} ${cx2},${cy2} ${x2},${y2}`;
+
+  /* ── Same side exit/enter (both bottom→top, etc): standard orthogonal ── */
+  if(s1==='bottom'&&s2==='top'){
+    /* Downward flow: exit bottom → go to midpoint-Y lane → horizontal to target X → enter top */
+    const exitY=y1+M;
+    const enterY=y2-M;
+    const midY=(exitY+enterY)/2;
+    return`M${x1},${y1} L${x1},${midY+offset} L${x2},${midY+offset} L${x2},${y2}`;
+  }
+  if(s1==='top'&&s2==='bottom'){
+    /* Upward flow */
+    const exitY=y1-M;
+    const enterY=y2+M;
+    const midY=(exitY+enterY)/2;
+    return`M${x1},${y1} L${x1},${midY+offset} L${x2},${midY+offset} L${x2},${y2}`;
+  }
+  if(s1==='right'&&s2==='left'){
+    /* Rightward flow */
+    const exitX=x1+M;
+    const enterX=x2-M;
+    const midX=(exitX+enterX)/2;
+    return`M${x1},${y1} L${midX+offset},${y1} L${midX+offset},${y2} L${x2},${y2}`;
+  }
+  if(s1==='left'&&s2==='right'){
+    /* Leftward flow */
+    const exitX=x1-M;
+    const enterX=x2+M;
+    const midX=(exitX+enterX)/2;
+    return`M${x1},${y1} L${midX+offset},${y1} L${midX+offset},${y2} L${x2},${y2}`;
+  }
+
+  /* ── U-turn and mixed cases: 5-segment routing ── */
+  if(s1==='bottom'&&s2==='bottom'){
+    const laneY=Math.max(y1,y2)+M*2;
+    return`M${x1},${y1} L${x1},${laneY+offset} L${x2},${laneY+offset} L${x2},${y2}`;
+  }
+  if(s1==='top'&&s2==='top'){
+    const laneY=Math.min(y1,y2)-M*2;
+    return`M${x1},${y1} L${x1},${laneY+offset} L${x2},${laneY+offset} L${x2},${y2}`;
+  }
+  if(s1==='right'&&s2==='right'){
+    const laneX=Math.max(x1,x2)+M*2;
+    return`M${x1},${y1} L${laneX+offset},${y1} L${laneX+offset},${y2} L${x2},${y2}`;
+  }
+  if(s1==='left'&&s2==='left'){
+    const laneX=Math.min(x1,x2)-M*2;
+    return`M${x1},${y1} L${laneX+offset},${y1} L${laneX+offset},${y2} L${x2},${y2}`;
+  }
+
+  /* ── Cross-axis routing (e.g. bottom→left): 2-turn path ── */
+  if((s1==='bottom'||s1==='top')&&(s2==='left'||s2==='right')){
+    const exitY=s1==='bottom'?y1+M:y1-M;
+    return`M${x1},${y1} L${x1},${y2+offset} L${x2},${y2+offset}`;
+  }
+  if((s1==='left'||s1==='right')&&(s2==='top'||s2==='bottom')){
+    const enterY=s2==='top'?y2-M:y2+M;
+    return`M${x1},${y1} L${x2+offset},${y1} L${x2+offset},${y2}`;
+  }
+
+  /* Fallback: simple L-bend */
+  return`M${x1},${y1} L${x1},${y2} L${x2},${y2}`;
 }
 
 function rectsOverlap(a,b,gap){return a.x<b.x+b.w+gap&&a.x+a.w+gap>b.x&&a.y<b.y+b.h+gap&&a.y+a.h+gap>b.y}
@@ -831,18 +876,22 @@ function App(){
   const connSet=useMemo(()=>{const s=new Set();wires.forEach(w=>{s.add(w[0]);s.add(w[1])});return s},[wires]);
 
   /* ── wire data ── */
-  const wireData=useMemo(()=>wires.map((w,i)=>{
-    const sN=nodes.find(n=>n.id===w[0]),tN=nodes.find(n=>n.id===w[1]);
-    if(!sN||!tN)return null;
-    const cA=nCtr(sN,groups),cB=nCtr(tN,groups);
-    const[sA,sB]=bestSides(cA,cB);
-    const pA=pPos(sN,groups,sA),pB=pPos(tN,groups,sB);
-    const isErr=sN.status==='error';
-    const srcTier=tierMap[sN.gid]||'worker';
-    const accent=TIERS[srcTier].accent;
-    return{i,src:w[0],tgt:w[1],pA,pB,sA,sB,isErr,accent,
-      path:makeWirePath(pA.x,pA.y,pB.x,pB.y,sA,sB,nodes,groups,w[0],w[1])};
-  }).filter(Boolean),[wires,nodes,groups]);
+  const wireData=useMemo(()=>{
+    /* Build wire keys for parallel offset calculation */
+    const wireKeys=wires.map(w=>w[0]+'→'+w[1]);
+    return wires.map((w,i)=>{
+      const sN=nodes.find(n=>n.id===w[0]),tN=nodes.find(n=>n.id===w[1]);
+      if(!sN||!tN)return null;
+      const cA=nCtr(sN,groups),cB=nCtr(tN,groups);
+      const[sA,sB]=bestSides(cA,cB);
+      const pA=pPos(sN,groups,sA),pB=pPos(tN,groups,sB);
+      const isErr=sN.status==='error';
+      const srcTier=tierMap[sN.gid]||'worker';
+      const accent=TIERS[srcTier].accent;
+      return{i,src:w[0],tgt:w[1],pA,pB,sA,sB,isErr,accent,
+        path:makeWirePath(pA.x,pA.y,pB.x,pB.y,sA,sB,nodes,groups,w[0],w[1],i,wireKeys)};
+    }).filter(Boolean);
+  },[wires,nodes,groups]);
 
   /* ── adaptive zoom: simplified view below 0.4 ── */
   const simplified=zoom<0.4;
@@ -998,7 +1047,7 @@ function App(){
         const r=ir,dx=c.x-r.scx,dy=c.y-r.scy;
         /* Content-aware minimum width: prevent nodes from overlapping.
            Uses EP for edge padding, MIN_SPACING=20 for minimum inter-node gap. */
-        const MIN_SPACING=20;
+        const MIN_SPACING=40; /* minimum inter-node gap during resize — matches routing clearance */
         const contentMinW=2*EP+r.cols*r.nodeW+(r.cols>1?(r.cols-1)*MIN_SPACING:0);
         const contentMinH=2*EP+r.rows*r.nodeH+(r.rows>1?(r.rows-1)*MIN_SPACING:0)+GH;
         const minW=Math.max(MIN_GW,contentMinW);
@@ -1446,49 +1495,56 @@ function App(){
           {/* DYING WIRES (retract animation) */}
           {dyingWires.map((dw,i)=>(
             <path key={'die-'+i} d={dw.path} fill="none" stroke="#cc3333" strokeWidth="2.5"
-              className="wire-dying" strokeLinecap="round" strokeDasharray="1000"/>
+              className="wire-dying" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="1000"/>
           ))}
 
-          {/* ACTIVE WIRES — source-colored, sharp flow */}
+          {/* ACTIVE WIRES — orthogonal routing, source-colored */}
           {wireData.map(wd=>(
             <g key={wd.i}>
               {/* subtle shadow for depth */}
-              <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent} strokeWidth="3"
-                opacity={wd.isErr?0.04:0.06} pointerEvents="none"/>
+              <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent} strokeWidth="4"
+                opacity={wd.isErr?0.04:0.05} pointerEvents="none" strokeLinejoin="round"/>
               {/* main cable — colored by SOURCE tier */}
               <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent}
-                strokeWidth={wd.isErr?'2.2':'1.8'}
-                strokeDasharray={wd.isErr?'6 4':'none'} opacity={wd.isErr?0.7:0.5}
+                strokeWidth={wd.isErr?'2':'1.6'}
+                strokeDasharray={wd.isErr?'6 4':'none'} opacity={wd.isErr?0.7:0.55}
                 markerEnd={wd.isErr?'url(#arr-e)':'url(#arr)'}
-                data-wire={wd.i} style={{pointerEvents:'stroke',cursor:'pointer'}} strokeLinecap="round"/>
-              {/* flow particles — sharp, defined, no blur — not on error wires */}
+                data-wire={wd.i} style={{pointerEvents:'stroke',cursor:'pointer'}}
+                strokeLinecap="round" strokeLinejoin="round"/>
+              {/* flow particles — travelling dots along orthogonal path */}
               {!wd.isErr&&(
                 <path d={wd.path} fill="none" stroke={wd.accent} className="wire-flow"
-                  strokeWidth="2.5" strokeDasharray="3 14" opacity="0.85"
-                  strokeLinecap="round" pointerEvents="none"/>
+                  strokeWidth="2.2" strokeDasharray="4 18" opacity="0.8"
+                  strokeLinecap="round" strokeLinejoin="round" pointerEvents="none"/>
               )}
             </g>
           ))}
 
-          {/* TEMPORARY WIRE — anchored to exact port position */}
+          {/* TEMPORARY WIRE — orthogonal preview while wiring */}
           {wiringFrom&&wiringMouse&&(()=>{
             const srcN=nodes.find(n=>n.id===wiringFrom.nid);
             if(!srcN)return null;
             const pp=pPos(srcN,groups,wiringFrom.side);
             const srcTier=tierMap[srcN.gid]||'worker';
             const accent=wiringFrom.isDragDisconnect?'#cc3333':TIERS[srcTier].accent;
-            const dx=wiringMouse.x-pp.x,dy=wiringMouse.y-pp.y;
-            const cp=Math.max(60,Math.sqrt(dx*dx+dy*dy)*0.4);
-            let cx1=pp.x,cy1=pp.y;
-            if(wiringFrom.side==='right')cx1+=cp;else if(wiringFrom.side==='left')cx1-=cp;
-            if(wiringFrom.side==='bottom')cy1+=cp;else if(wiringFrom.side==='top')cy1-=cp;
-            const path=`M${pp.x},${pp.y} C${cx1},${cy1} ${wiringMouse.x},${wiringMouse.y} ${wiringMouse.x},${wiringMouse.y}`;
+            const mx=wiringMouse.x,my=wiringMouse.y;
+            /* Orthogonal temp wire: exit from port side, then L-bend to cursor */
+            let path;
+            const s=wiringFrom.side;
+            if(s==='bottom'||s==='top'){
+              const midY=(pp.y+my)/2;
+              path=`M${pp.x},${pp.y} L${pp.x},${midY} L${mx},${midY} L${mx},${my}`;
+            }else{
+              const midX=(pp.x+mx)/2;
+              path=`M${pp.x},${pp.y} L${midX},${pp.y} L${midX},${my} L${mx},${my}`;
+            }
             return(
               <g>
                 <circle cx={pp.x} cy={pp.y} r="5" fill={accent} opacity="0.9"/>
                 <path d={path} fill="none" stroke={accent} strokeWidth="2" opacity="0.7"
-                  strokeLinecap="round" strokeDasharray={wiringFrom.isDragDisconnect?'6 4':'none'}/>
-                <circle cx={wiringMouse.x} cy={wiringMouse.y} r="4" fill={accent} opacity="0.6"
+                  strokeLinecap="round" strokeLinejoin="round"
+                  strokeDasharray={wiringFrom.isDragDisconnect?'6 4':'none'}/>
+                <circle cx={mx} cy={my} r="4" fill={accent} opacity="0.6"
                   stroke={accent} strokeWidth="1" strokeOpacity="0.3"/>
               </g>
             );
