@@ -43,7 +43,7 @@ input,textarea,select{outline:none;border:none;font-family:inherit}
 .modal-box button:hover{filter:brightness(1.2)}
 /* Wizard */
 .wiz-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:200}
-.wiz-box{background:#1e1e1e;border:1px solid #333;border-radius:14px;width:440px;max-height:80vh;overflow:auto;box-shadow:0 12px 50px rgba(0,0,0,0.6)}
+.wiz-box{background:#1e1e1e;border:1px solid #333;border-radius:14px;width:572px;max-height:80vh;overflow:auto;box-shadow:0 12px 50px rgba(0,0,0,0.6)}
 .wiz-hdr{padding:18px 24px 12px;border-bottom:1px solid #333;display:flex;align-items:center;gap:10px}
 .wiz-hdr h3{color:#e0e0e0;font-size:14px;font-weight:700;flex:1;margin:0}
 .wiz-body{padding:18px 24px}
@@ -57,6 +57,11 @@ input,textarea,select{outline:none;border:none;font-family:inherit}
 .wiz-tier-btn:hover{filter:brightness(1.15)}
 .wiz-tier-btn .wiz-tier-name{font-size:11px;font-weight:700;display:block}
 .wiz-tier-btn .wiz-tier-desc{font-size:9px;opacity:0.6;margin-top:2px;display:block}
+/* Hue slider — pure div, no native range */
+.hue-bar{position:relative;height:14px;border-radius:7px;cursor:pointer;
+  background:linear-gradient(to right,#ff0000,#ff8000,#ffff00,#80ff00,#00ff00,#00ff80,#00ffff,#0080ff,#0000ff,#8000ff,#ff00ff,#ff0080,#ff0000)}
+.hue-thumb{position:absolute;top:50%;width:10px;height:18px;border-radius:3px;background:#fff;border:1.5px solid rgba(0,0,0,0.25);
+  box-shadow:0 1px 4px rgba(0,0,0,0.4);transform:translate(-50%,-50%);pointer-events:none}
 .wiz-model-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
 .wiz-model-btn{padding:8px;border-radius:6px;background:#252525;border:2px solid transparent;cursor:pointer;text-align:center;transition:border-color 0.15s}
 .wiz-model-btn:hover{filter:brightness(1.15)}
@@ -1050,6 +1055,38 @@ function App(){
   const [nodeSizes,setNodeSizes]=useState({}); /* {nodeId:{w,h}} measured from DOM */
   const manualGroupSizes=useRef({}); /* {groupId:{w,h}} — floor set by manual resize */
   const customThemesRef=useRef({}); /* {groupId:{nodeBg,headerBg,accent,text}} — custom group themes */
+  /* HSV ↔ Hex helpers for color picker */
+  function hsvToHex(h,s,v){
+    const c=v*s, x=c*(1-Math.abs((h/60)%2-1)), m=v-c;
+    let r=0,g=0,b=0;
+    if(h<60){r=c;g=x}else if(h<120){r=x;g=c}else if(h<180){g=c;b=x}
+    else if(h<240){g=x;b=c}else if(h<300){r=x;b=c}else{r=c;b=x}
+    return '#'+[r+m,g+m,b+m].map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+  }
+  function hexToHsv(hex){
+    const r=parseInt(hex.slice(1,3),16)/255,g=parseInt(hex.slice(3,5),16)/255,b=parseInt(hex.slice(5,7),16)/255;
+    const max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min;
+    let h=0;
+    if(d!==0){
+      if(max===r)h=((g-b)/d+6)%6*60;
+      else if(max===g)h=((b-r)/d+2)*60;
+      else h=((r-g)/d+4)*60;
+    }
+    const s=max===0?0:d/max;
+    return {h:Math.round(h),s,v:max};
+  }
+  function hueToHex(h){return hsvToHex(h,1,1)}
+  function hexToHue(hex){return hexToHsv(hex).h}
+
+  /* Generate tinted dark backgrounds from an accent color */
+  function tintFromAccent(hex){
+    const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+    const mix=(c,t,a)=>Math.round(c*a+t*(1-a));
+    const nodeBg='#'+[r,g,b].map(c=>mix(c,16,0.12).toString(16).padStart(2,'0')).join('');
+    const headerBg='#'+[r,g,b].map(c=>mix(c,22,0.15).toString(16).padStart(2,'0')).join('');
+    const text='#'+[r,g,b].map(c=>Math.min(255,Math.round(c*0.6+120)).toString(16).padStart(2,'0')).join('');
+    return {nodeBg,headerBg,text};
+  }
   const getTheme=k=>TIERS[k]||customThemesRef.current[k]||TIERS.worker;
   const initialFitRef=useRef(false); /* true after first auto-fit + re-zoom */
 
@@ -1059,6 +1096,8 @@ function App(){
   useEffect(()=>{
     const el=cRef.current;if(!el)return;
     const h=e=>{
+      /* If wheel is inside a modal/wizard overlay, let it scroll naturally */
+      if(e.target.closest('.wiz-overlay')||e.target.closest('.modal-overlay'))return;
       /* If wheel is inside a scrollable node prompt area, let it scroll instead of zoom */
       const scrollable=e.target.closest('[data-node-scroll]');
       if(scrollable){
@@ -2121,13 +2160,15 @@ function App(){
       {wizard&&(()=>{
         const w=wizard;
         const tier=w.tier||'worker';
-        const customAccent=w.customColor||'#e05050';
+        const hasCustomColor=!!w.customColor;
+        const customAccent=w.customColor||'#cccccc';
         /* Build a dynamic tier theme for custom groups */
-        const customTier={nodeBg:'#1a1a1a',headerBg:'#222',accent:customAccent,text:customAccent};
+        const ct=hasCustomColor?tintFromAccent(customAccent):{nodeBg:'#1a1a1a',headerBg:'#222',text:'#ccc'};
+        const customTier={nodeBg:ct.nodeBg,headerBg:ct.headerBg,accent:customAccent,text:ct.text};
         const t=tier==='custom'?customTier:(TIERS[tier]||TIERS.worker);
         const canCreate=w.name.trim()&&w.prompt.trim()&&(tier!=='custom'||(w.groupName&&w.groupName.trim()));
         const TIER_DESC={orchestrator:'Top-level coordinator',manager:'Domain manager',worker:'Task executor',infra:'Infrastructure service',custom:'User-defined group'};
-        const CUSTOM_COLORS=['#e05050','#e88030','#50b868','#40b8d8','#6080e0','#c060d8','#d0a040','#e07098'];
+        const CUSTOM_COLORS=['#ffffff','#b0b0b0','#666666','#e05050','#e88030','#d0a040','#50b868','#40b8d8','#6080e0','#c060d8','#e07098','#70d0c0','#a0d050'];
         const wizUpdate=patch=>setWizard(wz=>({...wz,...patch}));
         const doCreate=()=>{
           if(!canCreate)return;
@@ -2144,7 +2185,8 @@ function App(){
             const groupLabel=(w.groupName&&w.groupName.trim())||'Custom';
             const ca=customAccent;
             /* Register theme so getTheme() can find it */
-            customThemesRef.current[targetGid]={nodeBg:'#1a1a1a',headerBg:'#222',accent:ca,text:ca};
+            const tint=tintFromAccent(ca);
+            customThemesRef.current[targetGid]={nodeBg:tint.nodeBg,headerBg:tint.headerBg,accent:ca,text:tint.text};
             tierMap[targetGid]=targetGid;
             const newGroup={id:targetGid,label:groupLabel,tier:targetGid,x:maxX+60,y:100,w:NW+EP*2,h:NH+EP*2+GH};
             setGroups(gs=>{try{return pushGroups(targetGid,[...gs,newGroup])}catch(e){return[...gs,newGroup]}});
@@ -2213,11 +2255,14 @@ function App(){
                       );
                     })}
                     {/* Custom group option */}
-                    <div className="wiz-tier-btn" onClick={()=>wizUpdate({tier:'custom'})}
-                      style={{background:'#1a1a1a',borderColor:tier==='custom'?customAccent:'transparent'}}>
-                      <span className="wiz-tier-name" style={{color:customAccent}}>Custom</span>
-                      <span className="wiz-tier-desc" style={{color:customAccent}}>User-defined group</span>
-                    </div>
+                    {(()=>{
+                      const ct=hasCustomColor?tintFromAccent(customAccent):null;
+                      return <div className="wiz-tier-btn" onClick={()=>wizUpdate({tier:'custom'})}
+                        style={{background:ct?ct.nodeBg:'#1a1a1a',borderColor:tier==='custom'?(hasCustomColor?customAccent:'#ccc'):'transparent'}}>
+                        <span className="wiz-tier-name" style={{color:ct?ct.text:'#ccc'}}>Custom</span>
+                        <span className="wiz-tier-desc" style={{color:ct?customAccent:'#999'}}>User-defined group</span>
+                      </div>;
+                    })()}
                   </div>
                 </div>
 
@@ -2228,14 +2273,80 @@ function App(){
                     <input value={w.groupName||''} onChange={e=>wizUpdate({groupName:e.target.value})}
                       placeholder="e.g. Analytics, Signals, Execution..." spellCheck="false"/>
                     <label style={{marginTop:10}}>Group Colour</label>
-                    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:6}}>
+                    <div style={{display:'flex',justifyContent:'space-between',flexWrap:'wrap',marginTop:6,alignItems:'center'}}>
                       {CUSTOM_COLORS.map(c=>(
                         <div key={c} onClick={()=>wizUpdate({customColor:c})}
                           style={{width:32,height:32,borderRadius:6,background:c,cursor:'pointer',
-                            border:customAccent===c?'3px solid #fff':'3px solid transparent',
+                            border:hasCustomColor&&customAccent===c?'3px solid #fff':'3px solid transparent',
                             transition:'border 0.15s'}}/>
                       ))}
                     </div>
+                    {/* Full colour picker */}
+                    {(()=>{
+                      const hsv=hasCustomColor?hexToHsv(customAccent):{h:0,s:1,v:1};
+                      const pureHue=hueToHex(hsv.h);
+                      const panelH=90;
+                      /* Sat-Val 2D panel drag */
+                      const handleSVDrag=(e,rect)=>{
+                        if(!rect)return;
+                        const x=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
+                        const y=Math.max(0,Math.min(1,(e.clientY-rect.top)/rect.height));
+                        wizUpdate({customColor:hsvToHex(hsv.h,x,1-y)});
+                      };
+                      const startSVDrag=e=>{
+                        const rect=e.currentTarget.getBoundingClientRect();
+                        handleSVDrag(e,rect);
+                        const move=ev=>handleSVDrag(ev,rect);
+                        const up=()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up)};
+                        window.addEventListener('mousemove',move);
+                        window.addEventListener('mouseup',up);
+                      };
+                      return <div style={{marginTop:16}}>
+                        {/* Saturation-Value panel */}
+                        <div onMouseDown={startSVDrag} style={{position:'relative',width:'100%',height:panelH,borderRadius:8,overflow:'hidden',cursor:'crosshair',
+                          background:pureHue}}>
+                          <div style={{position:'absolute',inset:0,background:'linear-gradient(to right,#ffffff,transparent)'}}/>
+                          <div style={{position:'absolute',inset:0,background:'linear-gradient(to bottom,transparent,#000000)'}}/>
+                          {/* Picker circle */}
+                          <div style={{position:'absolute',left:`${hsv.s*100}%`,top:`${(1-hsv.v)*100}%`,
+                            width:16,height:16,borderRadius:'50%',border:'3px solid #fff',
+                            boxShadow:'0 0 0 1px rgba(0,0,0,0.3),0 2px 6px rgba(0,0,0,0.4)',
+                            transform:'translate(-50%,-50%)',pointerEvents:'none'}}/>
+                        </div>
+                        {/* Hue slider + preview row */}
+                        <div style={{display:'flex',gap:12,alignItems:'center',marginTop:12}}>
+                          <div className="hue-bar" style={{flex:1}} onMouseDown={e=>{
+                            const bar=e.currentTarget,rect=bar.getBoundingClientRect();
+                            const setH=ev=>{const x=Math.max(0,Math.min(1,(ev.clientX-rect.left)/rect.width));
+                              wizUpdate({customColor:hsvToHex(Math.round(x*360),hsv.s,hsv.v)})};
+                            setH(e);
+                            const move=ev=>setH(ev);
+                            const up=()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up)};
+                            window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
+                          }}>
+                            <div className="hue-thumb" style={{left:`${hsv.h/360*100}%`}}/>
+                          </div>
+                        </div>
+                        {/* Hex display */}
+                        <div style={{marginTop:14,display:'flex',alignItems:'center',gap:8}}>
+                          <span style={{fontSize:9,fontWeight:700,letterSpacing:1.5,textTransform:'uppercase',color:'#888'}}>HEX</span>
+                          <input value={w._hexDraft!=null?w._hexDraft:(hasCustomColor?customAccent:'#ffffff')}
+                            onChange={e=>{
+                              const raw=e.target.value;
+                              wizUpdate({_hexDraft:raw});
+                              const v=raw.startsWith('#')?raw:'#'+raw;
+                              if(/^#[0-9a-fA-F]{6}$/.test(v))wizUpdate({customColor:v.toLowerCase(),_hexDraft:v.toLowerCase()});
+                            }}
+                            onBlur={e=>{
+                              const raw=e.target.value;
+                              const v=raw.startsWith('#')?raw:'#'+raw;
+                              if(/^#[0-9a-fA-F]{6}$/.test(v))wizUpdate({customColor:v.toLowerCase(),_hexDraft:null});
+                              else wizUpdate({_hexDraft:null});
+                            }}
+                            style={{width:90,background:'#252525',border:'1px solid #444',borderRadius:6,color:'#ccc',fontSize:12,padding:'5px 8px',fontFamily:'monospace'}}/>
+                        </div>
+                      </div>;
+                    })()}
                   </div>
                 )}
 
@@ -2275,7 +2386,7 @@ function App(){
               <div className="wiz-foot">
                 <button onClick={()=>setWizard(null)}>Cancel</button>
                 <button className="primary" disabled={!canCreate} onClick={doCreate}
-                  style={{color:canCreate?t.accent:'#666'}}>Create Node</button>
+                  style={{color:canCreate?'#ccc':'#666'}}>Create Node</button>
               </div>
             </div>
           </div>
