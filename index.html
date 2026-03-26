@@ -14,12 +14,19 @@ html,body,#root{width:100%;height:100%;overflow:hidden;background:#1a1a1a;font-f
 .sb-d4a030::-webkit-scrollbar-thumb{background:#d4a03044}.sb-d4a030{scrollbar-width:thin;scrollbar-color:#d4a03044 transparent}
 .sb-4098d8::-webkit-scrollbar-thumb{background:#4098d844}.sb-4098d8{scrollbar-width:thin;scrollbar-color:#4098d844 transparent}
 .sb-9860d8::-webkit-scrollbar-thumb{background:#9860d844}.sb-9860d8{scrollbar-width:thin;scrollbar-color:#9860d844 transparent}
+[data-node-scroll]::-webkit-scrollbar{width:54px}
+[data-node-scroll]::-webkit-scrollbar-track{background:#ffffff0a;border-radius:18px;margin:6px 0}
+[data-node-scroll]::-webkit-scrollbar-thumb{background:#ffffff33;border-radius:18px;border:8px solid transparent;background-clip:padding-box}
+[data-node-scroll]::-webkit-scrollbar-thumb:hover{background:#ffffff55;border:8px solid transparent;background-clip:padding-box}
+[data-node-scroll]{scrollbar-width:auto;scrollbar-color:#ffffff33 #ffffff0a}
 select{-webkit-appearance:none;-moz-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:22px!important}
 select option{background:#1a1a1a;color:#ccc}
 textarea{resize:none}
 input,textarea,select{outline:none;border:none;font-family:inherit}
 @keyframes flowDash{from{stroke-dashoffset:22}to{stroke-dashoffset:0}}
 .wire-flow{animation:flowDash 0.7s linear infinite}
+@keyframes borderFlow{from{stroke-dashoffset:22}to{stroke-dashoffset:0}}
+.node-border-flow{animation:borderFlow 0.7s linear infinite}
 @keyframes wireRetract{0%{opacity:1;stroke-dashoffset:0}100%{opacity:0;stroke-dashoffset:1000}}
 @keyframes errorPulse{0%,100%{box-shadow:0 0 30px #cc333344,inset 0 0 15px #cc333311}50%{box-shadow:0 0 40px #cc333366,inset 0 0 20px #cc333322}}
 @keyframes portPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.4)}}
@@ -114,16 +121,16 @@ const MODELS=[
   {id:'embeddings',label:'Embeddings',cost:'$',color:'#9860d8'},
   {id:'custom',label:'Custom',cost:'—',color:'#666'},
 ];
-const GH=44, GAP=40, MIN_GW=400, MIN_GH=200, MIN_NW=280, MIN_NH=160;
+const GH=84, GAP=50, MIN_GW=500, MIN_GH=220, MIN_NW=400, MIN_NH=160;
 const tierMap={orchestrator:'orchestrator',managers:'manager',workers:'worker',infra:'infra'};
 
 /* ═══════════════════ DEFAULT DATA ═══════════════════ */
 /* Responsive layout: sizes and positions adapt to viewport */
-const NW=380, NH=200, NS=40; /* default node width, height, spacing */
-const EP=50; /* edge padding inside groups — room for wire lanes */
-const NG=70; /* horizontal gap between nodes — routing clearance */
+const NW=820, NH=400, NS=40; /* default node width, height, spacing */
+const EP=40; /* edge padding inside groups — room for wire lanes */
+const NG=160; /* horizontal gap between nodes — routing clearance */
 /* ── Wire routing constants ── */
-const VG=80; /* vertical gap between node rows — routing clearance */
+const VG=220; /* vertical gap between node rows — routing clearance */
 /* Computed positions for evenly-spaced column layout within groups */
 const C0=EP, C1=EP+NW+NG, C2=EP+2*(NW+NG), C3=EP+3*(NW+NG); /* col x positions */
 const R0=EP, R1=EP+NH+VG; /* row y positions */
@@ -243,7 +250,7 @@ function nCtr(n,gs){const a=nAbs(n,gs);return{x:a.x+n.w/2,y:a.y+n.h/2}}
 /* ── Immutable port system ──
    Ports are defined once per node in mkNodes(). Their identity and order never change.
    Wires reference port IDs. No side inference exists. */
-const PORT_SEP=18; /* spacing between stacked ports on same side */
+const PORT_SEP=36; /* spacing between stacked ports on same side */
 const SIDES=['right','left','top','bottom'];
 function oppositeSide(s){return{right:'left',left:'right',top:'bottom',bottom:'top'}[s]}
 
@@ -266,9 +273,10 @@ function portSide(portId){
    Returns:
      portPositions — {portId: {x, y, side, nodeId}} flat lookup
      portsByNode   — {nodeId: {side: [{id, x, y, connected}]}} for rendering */
-function computePortPositions(wires,nodes,groups,sideAssign){
+function computePortPositions(wires,nodes,groups,sideAssign,nodeSizes){
   const portPositions={};
   const portsByNode={};
+  nodeSizes=nodeSizes||{};
 
   /* Build connected set */
   const connectedPorts=new Set();
@@ -276,6 +284,10 @@ function computePortPositions(wires,nodes,groups,sideAssign){
     if(w.srcPort)connectedPorts.add(w.srcPort);
     if(w.tgtPort)connectedPorts.add(w.tgtPort);
   });
+
+  /* Use measured sizes when available, fall back to nd.w/nd.h */
+  const rw=(nd)=>(nodeSizes[nd.id]&&nodeSizes[nd.id].w)||nd.w;
+  const rh=(nd)=>(nodeSizes[nd.id]&&nodeSizes[nd.id].h)||nd.h;
 
   /* Compute dynamic sides for connected ports based on wire endpoints */
   const nodeMap={};
@@ -288,8 +300,8 @@ function computePortPositions(wires,nodes,groups,sideAssign){
     const sAbs=nAbs(sN,groups),tAbs=nAbs(tN,groups);
     const key=w.src+'\u2192'+w.tgt;
     const prev=sideAssign[key]||{};
-    const srcSide=prev.srcLocked?prev.srcSide:bestSide(sAbs,sN.w,sN.h,tAbs,tN.w,tN.h,prev.srcSide);
-    const tgtSide=prev.tgtLocked?prev.tgtSide:bestSide(tAbs,tN.w,tN.h,sAbs,sN.w,sN.h,prev.tgtSide);
+    const srcSide=prev.srcLocked?prev.srcSide:bestSide(sAbs,rw(sN),rh(sN),tAbs,rw(tN),rh(tN),prev.srcSide);
+    const tgtSide=prev.tgtLocked?prev.tgtSide:bestSide(tAbs,rw(tN),rh(tN),sAbs,rw(sN),rh(sN),prev.tgtSide);
     sideAssign[key]={srcSide,tgtSide,srcLocked:!!prev.srcLocked,tgtLocked:!!prev.tgtLocked};
     if(w.srcPort)portDynSide[w.srcPort]=srcSide;
     if(w.tgtPort)portDynSide[w.tgtPort]=tgtSide;
@@ -298,6 +310,7 @@ function computePortPositions(wires,nodes,groups,sideAssign){
   /* Position ports — connected ports use dynamic side, spares stay static */
   nodes.forEach(nd=>{
     const abs=nAbs(nd,groups);
+    const nw=rw(nd),nh=rh(nd);
     portsByNode[nd.id]={};
     const sidePorts={right:[],left:[],top:[],bottom:[]};
 
@@ -315,7 +328,7 @@ function computePortPositions(wires,nodes,groups,sideAssign){
       const slots=[];
       for(let i=0;i<count;i++){
         const offset=(i-(count-1)/2)*PORT_SEP;
-        const pos=portAt(abs,nd.w,nd.h,side,offset);
+        const pos=portAt(abs,nw,nh,side,offset);
         const pid=portsOnSide[i].id;
         portPositions[pid]={x:pos.x,y:pos.y,side,nodeId:nd.id};
         slots.push({id:pid,x:pos.x,y:pos.y,connected:portsOnSide[i].connected});
@@ -592,9 +605,69 @@ function processingFor(tier,nd,isErr){
   };
 }
 
+/* ═══════════════════ CUSTOM MODEL DROPDOWN ═══════════════════ */
+function ModelDropdown({value,onChange,models,nodeBg,accent,color}){
+  const[open,setOpen]=useState(false);
+  const ref=useRef(null);
+  const cur=models.find(m=>m.id===value)||models[0];
+  useEffect(()=>{
+    if(!open)return;
+    const close=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false)};
+    document.addEventListener('pointerdown',close,true);
+    return()=>document.removeEventListener('pointerdown',close,true);
+  },[open]);
+  return(
+    <div ref={ref} style={{flex:1,position:'relative'}}
+      onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()}>
+      <div onClick={()=>setOpen(!open)}
+        style={{background:nodeBg,color:color,fontSize:26,padding:'10px 14px',borderRadius:6,
+          border:`1px solid ${accent}22`,cursor:'pointer',display:'flex',alignItems:'center',
+          justifyContent:'space-between',userSelect:'none'}}>
+        <span>{cur.label} ({cur.cost})</span>
+        <span style={{fontSize:16,color:'#666',marginLeft:8}}>{open?'▴':'▾'}</span>
+      </div>
+      {open&&<div style={{position:'absolute',top:'100%',left:0,right:0,marginTop:4,
+        background:'#1e1e1e',border:`1px solid ${accent}33`,borderRadius:8,
+        boxShadow:'0 8px 32px rgba(0,0,0,0.6)',zIndex:200,overflow:'hidden',
+        maxHeight:300,overflowY:'auto'}}>
+        {models.map(m=>{
+          const isSel=m.id===value;
+          return <div key={m.id}
+            onClick={()=>{onChange(m.id);setOpen(false)}}
+            style={{padding:'12px 16px',fontSize:24,cursor:'pointer',
+              color:m.color,background:isSel?accent+'15':'transparent',
+              borderBottom:'1px solid #ffffff08',display:'flex',alignItems:'center',
+              gap:10,transition:'background 0.1s'}}
+            onMouseEnter={e=>e.target.style.background=accent+'22'}
+            onMouseLeave={e=>e.target.style.background=isSel?accent+'15':'transparent'}>
+            <span style={{width:8,height:8,borderRadius:4,background:isSel?m.color:'transparent',flexShrink:0}}/>
+            <span>{m.label}</span>
+            <span style={{color:'#555',fontSize:18,marginLeft:'auto'}}>{m.cost}</span>
+          </div>;
+        })}
+      </div>}
+    </div>
+  );
+}
+
 /* ═══════════════════ LIVE PANEL COMPONENT ═══════════════════ */
 function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
   const panelRef=useRef(null);
+  const [panelW,setPanelW]=useState(568);
+  const dragRef=useRef(null);
+
+  /* Drag-to-resize left edge */
+  useEffect(()=>{
+    const onMove=e=>{
+      if(!dragRef.current)return;
+      const newW=window.innerWidth-e.clientX;
+      setPanelW(Math.max(280,Math.min(newW,window.innerWidth*0.6)));
+    };
+    const onUp=()=>{dragRef.current=null;document.body.style.cursor='';document.body.style.userSelect=''};
+    window.addEventListener('pointermove',onMove);
+    window.addEventListener('pointerup',onUp);
+    return()=>{window.removeEventListener('pointermove',onMove);window.removeEventListener('pointerup',onUp)};
+  },[]);
 
   /* Prevent wheel events from reaching the canvas */
   useEffect(()=>{
@@ -672,9 +745,15 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
 
   return(
     <div ref={panelRef} className="panel-enter" onMouseDown={e=>e.stopPropagation()}
-      style={{position:'absolute',top:0,right:0,bottom:0,width:380,
+      style={{position:'absolute',top:0,right:0,bottom:0,width:panelW,
       zIndex:100,background:'#1a1a1afa',borderLeft:`2px solid ${accent}44`,
       display:'flex',flexDirection:'column',overflow:'hidden',overscrollBehavior:'contain'}}>
+      {/* Resize drag handle */}
+      <div onPointerDown={e=>{e.preventDefault();e.stopPropagation();dragRef.current=true;document.body.style.cursor='col-resize';document.body.style.userSelect='none'}}
+        style={{position:'absolute',left:0,top:0,bottom:0,width:6,cursor:'col-resize',zIndex:101,
+          background:'transparent'}}
+        onMouseEnter={e=>e.target.style.background=accent+'33'}
+        onMouseLeave={e=>{if(!dragRef.current)e.target.style.background='transparent'}} />
 
       {/* ── HEADER ── */}
       <div style={{padding:'14px 16px',background:isErr?'#2a1414':t.headerBg,
@@ -938,6 +1017,9 @@ function App(){
   const interRef=useRef(null);
   const cRef=useRef(null);
   const sideAssignRef=useRef({}); /* { 'src→tgt': {srcSide,tgtSide,srcLocked?,tgtLocked?} } */
+  const [nodeSizes,setNodeSizes]=useState({}); /* {nodeId:{w,h}} measured from DOM */
+  const manualGroupSizes=useRef({}); /* {groupId:{w,h}} — floor set by manual resize */
+  const initialFitRef=useRef(false); /* true after first auto-fit + re-zoom */
 
   const toCanvas=useCallback((cx,cy)=>({x:(cx-pan.x)/zoom,y:(cy-pan.y)/zoom}),[pan,zoom]);
 
@@ -945,6 +1027,16 @@ function App(){
   useEffect(()=>{
     const el=cRef.current;if(!el)return;
     const h=e=>{
+      /* If wheel is inside a scrollable node prompt area, let it scroll instead of zoom */
+      const scrollable=e.target.closest('[data-node-scroll]');
+      if(scrollable){
+        /* Only hijack for zoom if the content isn't scrollable */
+        const canScroll=scrollable.scrollHeight>scrollable.clientHeight;
+        if(canScroll){
+          /* Let the browser scroll the element naturally */
+          return;
+        }
+      }
       e.preventDefault();
       const delta=e.deltaY>0?-0.06:0.06;
       setZoom(prevZ=>{
@@ -989,10 +1081,86 @@ function App(){
   /* ── connected set ── */
   const connSet=useMemo(()=>{const s=new Set();wires.forEach(w=>{s.add(w.src);s.add(w.tgt)});return s},[wires]);
 
+  /* ── measure actual rendered node sizes so ports track real edges ── */
+  useEffect(()=>{
+    const el=cRef.current;if(!el)return;
+    const measured={};
+    el.querySelectorAll('[data-node]').forEach(div=>{
+      const id=div.getAttribute('data-node');
+      measured[id]={w:div.offsetWidth,h:div.offsetHeight};
+    });
+    setNodeSizes(prev=>{
+      let changed=false;
+      for(const id in measured){
+        if(!prev[id]||prev[id].w!==measured[id].w||prev[id].h!==measured[id].h){changed=true;break}
+      }
+      if(Object.keys(prev).length!==Object.keys(measured).length)changed=true;
+      return changed?measured:prev;
+    });
+    /* Auto-fit groups to actual rendered node sizes + padding.
+       Expands AND contracts. Respects manual resize floor.
+       Cascades Y positions so groups never overlap. */
+    const ir=interRef.current;
+    const activeResizeId=(ir&&ir.type==='resizing_group')?ir.id:null;
+    const activeDragId=(ir&&ir.type==='dragging_group')?ir.id:null;
+    const PAD=EP;
+    let changed=false;
+    let fitted=groups.map(g=>{
+      if(g.id===activeResizeId)return g;
+      const gNodes=nodes.filter(n=>n.gid===g.id);
+      if(!gNodes.length)return g;
+      let maxR=0,maxB=0;
+      gNodes.forEach(nd=>{
+        const mw=(measured[nd.id]&&measured[nd.id].w)||nd.w;
+        const mh=(measured[nd.id]&&measured[nd.id].h)||nd.h;
+        maxR=Math.max(maxR,nd.x+mw+PAD);
+        maxB=Math.max(maxB,nd.y+mh+PAD+GH);
+      });
+      const floor=manualGroupSizes.current[g.id];
+      const fitW=Math.max(maxR, floor?floor.w:MIN_GW);
+      const fitH=Math.max(maxB, floor?floor.h:MIN_GH);
+      if(Math.abs(fitW-g.w)>1||Math.abs(fitH-g.h)>1){changed=true;return{...g,w:fitW,h:fitH}}
+      return g;
+    });
+    /* Cascade vertical positions so groups maintain GAP spacing */
+    if(!activeDragId){
+      const sorted=[...fitted].sort((a,b)=>a.y-b.y);
+      for(let i=1;i<sorted.length;i++){
+        const prev=sorted[i-1];
+        const minY=prev.y+prev.h+GAP;
+        if(sorted[i].y<minY){
+          const idx=fitted.findIndex(f=>f.id===sorted[i].id);
+          fitted[idx]={...fitted[idx],y:minY};
+          sorted[i]={...sorted[i],y:minY};
+          changed=true;
+        }
+      }
+    }
+    if(changed){
+      setGroups(fitted);
+      /* Re-fit zoom/pan on first auto-fit so everything fits on screen */
+      if(!initialFitRef.current){
+        initialFitRef.current=true;
+        requestAnimationFrame(()=>{
+          const vw=window.innerWidth,vh=window.innerHeight;
+          const minX=Math.min(...fitted.map(g=>g.x));
+          const minY=Math.min(...fitted.map(g=>g.y));
+          const maxX=Math.max(...fitted.map(g=>g.x+g.w));
+          const maxY=Math.max(...fitted.map(g=>g.y+g.h));
+          const gw=maxX-minX,gh=maxY-minY;
+          const FPAD=40;
+          const z=clamp(Math.min((vw-FPAD*2)/gw,(vh-FPAD*2)/gh),0.15,1.2);
+          setZoom(z);
+          setPan({x:(vw-gw*z)/2-minX*z,y:(vh-gh*z)/2-minY*z});
+        });
+      }
+    }
+  });
+
   /* ── port positions from immutable port definitions ── */
   const{portPositions,portsByNode}=useMemo(()=>{
-    return computePortPositions(wires,nodes,groups,sideAssignRef.current);
-  },[wires,nodes,groups]);
+    return computePortPositions(wires,nodes,groups,sideAssignRef.current,nodeSizes);
+  },[wires,nodes,groups,nodeSizes]);
 
   const wireData=useMemo(()=>{
     return wires.map((w,i)=>{
@@ -1010,7 +1178,7 @@ function App(){
   },[wires,nodes,groups,portPositions]);
 
   /* ── adaptive zoom: simplified view below 0.4 ── */
-  const simplified=zoom<0.4;
+  const simplified=zoom<0.25;
 
   /* ── MOUSE DOWN ── */
   const DRAG_THRESHOLD=5;
@@ -1325,9 +1493,14 @@ function App(){
 
       case 'wiring': /* already handled above */
       case 'dragging_group':
-      case 'resizing_group':
       case 'panning':
         break;
+      case 'resizing_group':{
+        const gid=ir.id;
+        const g=groups.find(g=>g.id===gid);
+        if(g)manualGroupSizes.current[gid]={w:g.w,h:g.h};
+        break;
+      }
     }
 
     interRef.current=null;
@@ -1545,14 +1718,14 @@ function App(){
               <div style={{position:'absolute',inset:0,background:'#1e1e1e',border:'1px solid #282828',
                 borderRadius:12,overflow:'hidden',pointerEvents:'auto'}}>
                 <div data-gh={g.id} style={{height:GH,background:t.headerBg,display:'flex',
-                  alignItems:'center',padding:'0 14px',cursor:'grab',userSelect:'none',borderRadius:'12px 12px 0 0'}}>
-                  <div style={{width:12,height:12,borderRadius:6,background:t.accent,
-                    boxShadow:`0 0 8px ${t.accent}88`,marginRight:10,flexShrink:0}}/>
-                  <span style={{fontSize:13,fontWeight:700,letterSpacing:2,color:t.text,textTransform:'uppercase',flex:1}}>
+                  alignItems:'center',padding:'0 30px',cursor:'grab',userSelect:'none',borderRadius:'12px 12px 0 0'}}>
+                  <div style={{width:14,height:14,borderRadius:7,background:t.accent,
+                    boxShadow:`0 0 8px ${t.accent}88`,marginRight:14,flexShrink:0}}/>
+                  <span style={{fontSize:22,fontWeight:700,letterSpacing:2,color:t.text,textTransform:'uppercase',flex:1}}>
                     {g.label}</span>
                   <button onClick={e=>{e.stopPropagation();addNode(g.id)}} style={{
-                    background:'transparent',border:`1px solid ${t.accent}22`,borderRadius:4,
-                    color:t.text,fontSize:9,padding:'2px 6px',cursor:'pointer',fontWeight:500,
+                    background:'transparent',border:`2px solid ${t.accent}33`,borderRadius:6,
+                    color:t.text,fontSize:22,padding:'10px 22px',cursor:'pointer',fontWeight:600,
                     opacity:0.4,transition:'opacity 0.15s'}}
                     onMouseEnter={e=>e.target.style.opacity='0.8'}
                     onMouseLeave={e=>e.target.style.opacity='0.4'}>+ Node</button>
@@ -1572,6 +1745,8 @@ function App(){
           const abs=nAbs(nd,groups);
           const isErr=nd.status==='error';
           const isSel=selected===nd.id;
+          const connectedToHover=hoverNode!==null&&hoverNode!==nd.id&&wires.some(w=>(w.src===hoverNode&&w.tgt===nd.id)||(w.tgt===hoverNode&&w.src===nd.id));
+          const connectedToSel=selected!==null&&selected!==nd.id&&wires.some(w=>(w.src===selected&&w.tgt===nd.id)||(w.tgt===selected&&w.src===nd.id));
           const sb='sb-'+t.accent.replace('#','');
           const mdl=MODELS.find(m=>m.id===nd.model)||MODELS[0];
           const nodeDelay=ni*0.04; /* stagger each node by 40ms */
@@ -1580,64 +1755,82 @@ function App(){
               onMouseEnter={()=>setHoverNode(nd.id)}
               onMouseLeave={()=>setHoverNode(h=>h===nd.id?null:h)}
               style={{
-              position:'absolute',left:abs.x,top:abs.y,width:nd.w,minHeight:nd.h,
+              position:'absolute',left:abs.x,top:abs.y,width:nd.w,height:nd.h,
               background:isErr?'#1a1212':t.nodeBg,
-              border:isErr?'2px solid #cc3333':isSel?`2px solid ${t.accent}`:`1px solid ${hoverNode===nd.id?t.accent+'55':t.accent+'33'}`,
+              border:isErr?'2px solid #cc3333':(isSel||hoverNode===nd.id)?'1px solid transparent':`1px solid ${t.accent+'33'}`,
               borderRadius:8,zIndex:isSel?18:12,pointerEvents:'auto',
               display:'flex',flexDirection:'column',cursor:'pointer',
               boxShadow:isErr?'inset 0 0 12px #cc333315':'none',
               animation:loadPhase<4?(loadPhase>=2?`nodeFadeIn 0.35s ease-out ${nodeDelay}s both`:'none'):isErr?'errorPulse 3s ease infinite':'none',
-              opacity:loadPhase<2?0:undefined,
+              opacity:loadPhase<2?0:(selected!==null&&!isSel&&!connectedToSel)?0.25:undefined,
               userSelect:'none',overflow:'visible',
               transition:'border 0.15s, box-shadow 0.15s',
             }}>
 
+              {/* flowing beads border on hover/select/connected */}
+              {(hoverNode===nd.id||isSel||connectedToHover||connectedToSel)&&!isErr&&(()=>{
+                const intense=isSel||connectedToSel;
+                const pad=10;
+                return <svg style={{position:'absolute',left:-pad,top:-pad,width:nd.w+pad*2,height:nd.h+pad*2,pointerEvents:'none',zIndex:30,overflow:'visible'}}>
+                  {/* solid cable */}
+                  <rect x={pad} y={pad} width={nd.w} height={nd.h} rx="8" ry="8"
+                    fill="none" stroke={t.accent} strokeWidth="3.5"
+                    strokeOpacity="0.55"/>
+                  {/* flowing beads */}
+                  <rect x={pad} y={pad} width={nd.w} height={nd.h} rx="8" ry="8"
+                    fill="none" stroke={t.accent} strokeWidth="5"
+                    strokeDasharray="6 20" strokeLinecap="round" opacity="0.8"
+                    className="node-border-flow"/>
+                </svg>;
+              })()}
+
               {/* INNER CONTENT (clipped for border radius) */}
               <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:7}}>
                 {/* HEADER — drag handle for moving */}
-                <div data-nheader="1" style={{height:50,background:isErr?'#2a1414':t.headerBg,display:'flex',
-                  alignItems:'center',padding:'0 14px',gap:6,
+                <div data-nheader="1" style={{height:80,background:isErr?'#2a1414':t.headerBg,display:'flex',
+                  alignItems:'center',padding:'0 32px',gap:14,
                   borderBottom:`1px solid ${isErr?'#cc333344':t.accent+'22'}`,flexShrink:0}}>
-                  <div style={{width:9,height:9,borderRadius:5,flexShrink:0,
+                  <div style={{width:12,height:12,borderRadius:6,flexShrink:0,
                     background:isErr?'#cc3333':t.accent,
                     boxShadow:`0 0 8px ${isErr?'#cc333388':t.accent+'88'}`}}/>
-                  <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:15,fontWeight:600,overflow:'hidden',
+                  <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:28,fontWeight:600,overflow:'hidden',
                     textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
-                  {nd.auth&&<span style={{fontSize:9,fontWeight:700,background:'#d4a03033',
-                    color:'#d4a030',padding:'3px 7px',borderRadius:3,letterSpacing:1,cursor:'default'}}>AUTH</span>}
-                  {isErr&&<span style={{fontSize:9,fontWeight:700,background:'#cc333333',
-                    color:'#ff6666',padding:'3px 7px',borderRadius:3,letterSpacing:1,cursor:'default'}}>ERROR</span>}
+                  {nd.auth&&<span style={{fontSize:15,fontWeight:700,background:'#d4a03033',
+                    color:'#d4a030',padding:'5px 10px',borderRadius:4,letterSpacing:1,cursor:'default'}}>AUTH</span>}
+                  {isErr&&<span style={{fontSize:15,fontWeight:700,background:'#cc333333',
+                    color:'#ff6666',padding:'5px 10px',borderRadius:4,letterSpacing:1,cursor:'default'}}>ERROR</span>}
                   <button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                     onMouseDown={e=>e.stopPropagation()}
                     style={{background:'transparent',border:'none',color:isErr?'#cc3333':t.accent,
-                      fontSize:15,cursor:'pointer',padding:6,lineHeight:1,minWidth:28,minHeight:28,
+                      fontSize:24,cursor:'pointer',padding:8,lineHeight:1,minWidth:36,minHeight:36,
                       display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4}}>{isErr?'⚠':'✓'}</button>
                   <button onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
                     onMouseDown={e=>e.stopPropagation()}
                     style={{background:'transparent',border:'none',color:'#666',
-                      fontSize:15,cursor:'pointer',padding:6,lineHeight:1,minWidth:28,minHeight:28,
+                      fontSize:24,cursor:'pointer',padding:8,lineHeight:1,minWidth:36,minHeight:36,
                       display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4}}>✕</button>
                 </div>
 
                 {/* Body — click opens inspection panel */}
                 {!simplified&&<>
                   {/* MODEL ROW */}
-                  <div style={{padding:'8px 14px',borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
-                    display:'flex',alignItems:'center',gap:8,flexShrink:0,cursor:'pointer'}}>
-                    <span style={{fontSize:10.5,fontWeight:700,color:'#666',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
-                    <select value={nd.model} onChange={e=>{e.stopPropagation();updateNode(nd.id,{model:e.target.value})}}
-                      onClick={e=>e.stopPropagation()}
-                      style={{flex:1,background:t.nodeBg,color:mdl.color,fontSize:12.5,
-                        padding:'4px 8px',borderRadius:4,border:`1px solid ${t.accent}22`,cursor:'pointer'}}>
-                      {MODELS.map(m=><option key={m.id} value={m.id}>{m.label} ({m.cost})</option>)}
-                    </select>
+                  <div style={{padding:'22px 32px',borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
+                    display:'flex',alignItems:'center',gap:16,flexShrink:0,cursor:'pointer'}}>
+                    <span style={{fontSize:20,fontWeight:700,color:'#666',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
+                    <ModelDropdown value={nd.model}
+                      onChange={v=>updateNode(nd.id,{model:v})}
+                      models={MODELS} nodeBg={t.nodeBg} accent={t.accent} color={mdl.color}/>
                   </div>
                   {/* BEHAVIOUR PROMPT — read-only display */}
-                  <div className={sb} style={{flex:1,padding:'10px 14px 12px',minHeight:0,overflow:'auto',
-                    overscrollBehavior:'contain'}}>
-                    <span style={{fontSize:10.5,fontWeight:700,color:'#666',letterSpacing:1.5,marginBottom:8,
-                      textTransform:'uppercase',display:'block',flexShrink:0}}>BEHAVIOUR PROMPT</span>
-                    <div style={{fontSize:11.5,lineHeight:1.6,color:isErr?'#cc9999':t.text+'cc',
+                  <div style={{padding:'26px 32px 0',flexShrink:0}}>
+                    <span style={{fontSize:20,fontWeight:700,color:'#666',letterSpacing:1.5,marginBottom:14,
+                      textTransform:'uppercase',display:'block'}}>BEHAVIOUR PROMPT</span>
+                  </div>
+                  <div className={sb} data-node-scroll="1"
+                    style={{flex:1,minHeight:0,
+                      overflow:'auto',margin:'0 32px',
+                      overscrollBehavior:'contain',pointerEvents:'auto'}}>
+                    <div style={{fontSize:26,lineHeight:1.35,color:isErr?'#cc9999':t.text+'cc',
                       whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{nd.prompt}</div>
                   </div>
                 </>}
@@ -1648,7 +1841,7 @@ function App(){
                 const isW=wiringFrom!==null;
                 const isTarget=isW&&wiringFrom.nid!==nd.id;
                 const glow=isErr?'#cc3333':t.accent;
-                const HIT=30;
+                const HIT=50;
                 const nodePortData=portsByNode[nd.id]||{};
                 const ports=[];
                 SIDES.forEach(side=>{
@@ -1666,15 +1859,15 @@ function App(){
                           width:HIT,height:HIT,borderRadius:HIT/2,
                           cursor:'crosshair',zIndex:35,display:'flex',alignItems:'center',
                           justifyContent:'center',pointerEvents:'auto'}}>
-                        <div style={{width:10,height:10,borderRadius:5,
-                          border:`1.5px solid ${col}`,
+                        <div style={{width:20,height:20,borderRadius:10,
+                          border:`3px solid ${col}`,
                           background:isConn?col+'22':(isW?col+'33':'transparent'),
                           display:'flex',alignItems:'center',justifyContent:'center',
-                          boxShadow:isConn?`0 0 5px ${glow}44`:'none',
+                          boxShadow:isConn?`0 0 8px ${glow}44`:'none',
                           animation:(!isConn&&isTarget)?'portPulse 1s ease infinite':'none',
                           pointerEvents:'none',
                         }}>
-                          <div style={{width:4,height:4,borderRadius:2,background:col,
+                          <div style={{width:8,height:8,borderRadius:4,background:col,
                             pointerEvents:'none'}}/>
                         </div>
                       </div>
@@ -1694,17 +1887,22 @@ function App(){
           opacity:loadPhase>=3?1:0,
           animation:loadPhase>=3&&loadPhase<4?'wireFadeIn 0.6s ease-out forwards':'none'}}>
           <defs>
-            <marker id="arr" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
-              <path d="M0,0 L6,2.5 L0,5" fill="#666" stroke="none"/></marker>
-            <marker id="arr-e" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
-              <path d="M0,0 L6,2.5 L0,5" fill="#cc3333" stroke="none"/></marker>
+            <marker id="arr" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
+              <path d="M0,0 L10,4 L0,8" fill="#666" stroke="none"/></marker>
+            <marker id="arr-e" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
+              <path d="M0,0 L10,4 L0,8" fill="#cc3333" stroke="none"/></marker>
+            {/* Per-color arrow markers so each wire's arrowhead matches its color */}
+            {[...new Set(wireData.map(w=>w.accent))].map(c=>(
+              <marker key={'arr-'+c} id={'arr-'+c.replace('#','')} markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
+                <path d="M0,0 L10,4 L0,8" fill={c} stroke="none"/></marker>
+            ))}
             <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/>
               <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           </defs>
 
           {/* DYING WIRES (retract animation) */}
           {dyingWires.map((dw,i)=>(
-            <path key={'die-'+i} d={dw.path} fill="none" stroke="#cc3333" strokeWidth="2.5"
+            <path key={'die-'+i} d={dw.path} fill="none" stroke="#cc3333" strokeWidth="4"
               className="wire-dying" strokeLinecap="round" strokeDasharray="1000"/>
           ))}
 
@@ -1716,35 +1914,42 @@ function App(){
             /* Highlight if hovered OR selected node is connected */
             const nodeHov=hoverNode!==null&&(wd.src===hoverNode||wd.tgt===hoverNode);
             const nodeSel=selected!==null&&(wd.src===selected||wd.tgt===selected);
-            const lit=isHov||nodeHov||nodeSel;
+            const litStrong=isHov||nodeSel; /* click/wire-hover: intensified */
+            const litSoft=nodeHov; /* node-hover: keep normal appearance, just don't dim */
+            const lit=litStrong||litSoft;
             const anyActive=anyHov||hoverNode!==null||selected!==null;
             const dim=anyActive&&!lit;
-            const mainOpacity=wd.isErr?0.7:lit?0.9:dim?0.15:0.55;
-            const mainWidth=wd.isErr?2:lit?2.8:1.6;
-            const flowOpacity=lit?1:dim?0.2:0.8;
+            const mainOpacity=wd.isErr?0.7:dim?0.03:0.55;
+            const mainWidth=wd.isErr?3.5:3.5;
+            const flowOpacity=dim?0.03:0.8;
             return(
             <g key={wd.i}
               onMouseEnter={()=>setHoverWire(wd.i)}
               onMouseLeave={()=>setHoverWire(h=>h===wd.i?null:h)}>
               {/* subtle shadow — brighter on hover */}
               <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent}
-                strokeWidth={lit?6:4} opacity={lit?0.12:dim?0.02:0.06}
+                strokeWidth="8" opacity={dim?0.005:0.06}
                 pointerEvents="none" strokeLinecap="round"/>
               {/* wide invisible hit area for hover detection */}
-              <path d={wd.path} fill="none" stroke="transparent" strokeWidth="14"
+              <path d={wd.path} fill="none" stroke="transparent" strokeWidth="28"
                 style={{pointerEvents:'stroke',cursor:'pointer'}}
                 data-wire={wd.i}/>
               {/* main cable */}
               <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent}
                 strokeWidth={mainWidth}
-                strokeDasharray={wd.isErr?'6 4':'none'} opacity={mainOpacity}
-                markerEnd={wd.isErr?'url(#arr-e)':'url(#arr)'}
+                strokeDasharray={wd.isErr?'6 4':'none'} strokeOpacity={mainOpacity}
+                markerEnd={dim?'none':wd.isErr?'url(#arr-e)':`url(#arr-${wd.accent.replace('#','')})`}
                 pointerEvents="none" strokeLinecap="round"
-                style={{transition:'opacity 0.15s, stroke-width 0.15s'}}/>
+                style={{transition:'stroke-opacity 0.15s, stroke-width 0.15s'}}/>
+              {/* dimmed arrowhead — uses opacity so marker dims too */}
+              {dim&&<path d={wd.path} fill="none" stroke="transparent" strokeWidth="0.1"
+                markerEnd={wd.isErr?'url(#arr-e)':`url(#arr-${wd.accent.replace('#','')})`}
+                opacity={0.03}
+                pointerEvents="none"/>}
               {/* flow particles */}
               {!wd.isErr&&(
                 <path d={wd.path} fill="none" stroke={wd.accent} className="wire-flow"
-                  strokeWidth={lit?3:2.2} strokeDasharray="4 18" opacity={flowOpacity}
+                  strokeWidth="4" strokeDasharray="6 20" opacity={flowOpacity}
                   strokeLinecap="round" pointerEvents="none"
                   style={{transition:'opacity 0.15s'}}/>
               )}
@@ -1765,12 +1970,12 @@ function App(){
             const path=makeSimpleBezier(pp.x,pp.y,mx,my,wiringFrom.side,tgtSide);
             return(
               <g>
-                <circle cx={pp.x} cy={pp.y} r="5" fill={accent} opacity="0.9"/>
-                <path d={path} fill="none" stroke={accent} strokeWidth="2" opacity="0.7"
+                <circle cx={pp.x} cy={pp.y} r="8" fill={accent} opacity="0.9"/>
+                <path d={path} fill="none" stroke={accent} strokeWidth="3.5" opacity="0.7"
                   strokeLinecap="round"
-                  strokeDasharray={wiringFrom.isDragDisconnect?'6 4':'none'}/>
-                <circle cx={mx} cy={my} r="4" fill={accent} opacity="0.6"
-                  stroke={accent} strokeWidth="1" strokeOpacity="0.3"/>
+                  strokeDasharray={wiringFrom.isDragDisconnect?'8 6':'none'}/>
+                <circle cx={mx} cy={my} r="7" fill={accent} opacity="0.6"
+                  stroke={accent} strokeWidth="2" strokeOpacity="0.3"/>
               </g>
             );
           })()}
