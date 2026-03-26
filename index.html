@@ -1511,15 +1511,14 @@ function App(){
             const gid=selected&&nodes.find(n=>n.id===selected)?.gid||'workers';
             addNode(gid);
           }} style={{
-            background:'linear-gradient(135deg,#38d07a22,#4098d822)',
-            border:'1.5px solid #38d07a66',borderRadius:8,
-            color:'#e0e0e0',fontSize:13,padding:'8px 20px',cursor:'pointer',
-            fontWeight:700,letterSpacing:0.5,marginLeft:8,
-            boxShadow:'0 0 20px #38d07a22, 0 2px 8px rgba(0,0,0,0.3)',
+            background:'#ffffff0a',
+            border:'1px solid #555',borderRadius:8,
+            color:'#ccc',fontSize:13,padding:'8px 20px',cursor:'pointer',
+            fontWeight:600,letterSpacing:0.5,marginLeft:8,
             transition:'all 0.15s ease',
           }}
-          onMouseEnter={e=>{e.target.style.boxShadow='0 0 30px #38d07a44, 0 2px 12px rgba(0,0,0,0.4)';e.target.style.borderColor='#38d07a99'}}
-          onMouseLeave={e=>{e.target.style.boxShadow='0 0 20px #38d07a22, 0 2px 8px rgba(0,0,0,0.3)';e.target.style.borderColor='#38d07a66'}}
+          onMouseEnter={e=>{e.target.style.background='#ffffff14';e.target.style.borderColor='#888'}}
+          onMouseLeave={e=>{e.target.style.background='#ffffff0a';e.target.style.borderColor='#555'}}
           >+ Add Node</button>
         </div>
       </div>
@@ -1583,10 +1582,10 @@ function App(){
               style={{
               position:'absolute',left:abs.x,top:abs.y,width:nd.w,minHeight:nd.h,
               background:isErr?'#1a1212':t.nodeBg,
-              border:isErr?'2.5px solid #cc3333':isSel?`2.5px solid ${t.accent}`:`1px solid ${hoverNode===nd.id?t.accent+'55':t.accent+'33'}`,
+              border:isErr?'2px solid #cc3333':isSel?`2px solid ${t.accent}`:`1px solid ${hoverNode===nd.id?t.accent+'55':t.accent+'33'}`,
               borderRadius:8,zIndex:isSel?18:12,pointerEvents:'auto',
               display:'flex',flexDirection:'column',cursor:'pointer',
-              boxShadow:isErr?'0 0 30px #cc333344, inset 0 0 15px #cc333311':isSel?`0 0 30px ${t.accent}55, 0 0 8px ${t.accent}88`:hoverNode===nd.id?`0 0 12px ${t.accent}22`:'none',
+              boxShadow:isErr?'inset 0 0 12px #cc333315':'none',
               animation:loadPhase<4?(loadPhase>=2?`nodeFadeIn 0.35s ease-out ${nodeDelay}s both`:'none'):isErr?'errorPulse 3s ease infinite':'none',
               opacity:loadPhase<2?0:undefined,
               userSelect:'none',overflow:'visible',
@@ -1596,26 +1595,28 @@ function App(){
               {/* INNER CONTENT (clipped for border radius) */}
               <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:7}}>
                 {/* HEADER — drag handle for moving */}
-                <div data-nheader="1" style={{height:46,background:isErr?'#2a1414':t.headerBg,display:'flex',
-                  alignItems:'center',padding:'0 14px',gap:8,
+                <div data-nheader="1" style={{height:50,background:isErr?'#2a1414':t.headerBg,display:'flex',
+                  alignItems:'center',padding:'0 14px',gap:6,
                   borderBottom:`1px solid ${isErr?'#cc333344':t.accent+'22'}`,flexShrink:0}}>
                   <div style={{width:9,height:9,borderRadius:5,flexShrink:0,
                     background:isErr?'#cc3333':t.accent,
                     boxShadow:`0 0 8px ${isErr?'#cc333388':t.accent+'88'}`}}/>
-                  <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:14,fontWeight:600,overflow:'hidden',
+                  <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:15,fontWeight:600,overflow:'hidden',
                     textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
-                  {nd.auth&&<span style={{fontSize:8,fontWeight:700,background:'#d4a03033',
-                    color:'#d4a030',padding:'2px 5px',borderRadius:3,letterSpacing:1}}>AUTH</span>}
-                  {isErr&&<span style={{fontSize:8,fontWeight:700,background:'#cc333333',
-                    color:'#ff6666',padding:'2px 5px',borderRadius:3,letterSpacing:1}}>ERROR</span>}
+                  {nd.auth&&<span style={{fontSize:9,fontWeight:700,background:'#d4a03033',
+                    color:'#d4a030',padding:'3px 7px',borderRadius:3,letterSpacing:1,cursor:'default'}}>AUTH</span>}
+                  {isErr&&<span style={{fontSize:9,fontWeight:700,background:'#cc333333',
+                    color:'#ff6666',padding:'3px 7px',borderRadius:3,letterSpacing:1,cursor:'default'}}>ERROR</span>}
                   <button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                     onMouseDown={e=>e.stopPropagation()}
                     style={{background:'transparent',border:'none',color:isErr?'#cc3333':t.accent,
-                      fontSize:13,cursor:'pointer',padding:'0 2px',lineHeight:1}}>{isErr?'⚠':'✓'}</button>
+                      fontSize:15,cursor:'pointer',padding:6,lineHeight:1,minWidth:28,minHeight:28,
+                      display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4}}>{isErr?'⚠':'✓'}</button>
                   <button onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
                     onMouseDown={e=>e.stopPropagation()}
                     style={{background:'transparent',border:'none',color:'#666',
-                      fontSize:13,cursor:'pointer',padding:'0 2px',lineHeight:1}}>✕</button>
+                      fontSize:15,cursor:'pointer',padding:6,lineHeight:1,minWidth:28,minHeight:28,
+                      display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4}}>✕</button>
                 </div>
 
                 {/* Body — click opens inspection panel */}
@@ -1623,10 +1624,10 @@ function App(){
                   {/* MODEL ROW */}
                   <div style={{padding:'8px 14px',borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
                     display:'flex',alignItems:'center',gap:8,flexShrink:0,cursor:'pointer'}}>
-                    <span style={{fontSize:10,fontWeight:700,color:'#666',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
+                    <span style={{fontSize:10.5,fontWeight:700,color:'#666',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
                     <select value={nd.model} onChange={e=>{e.stopPropagation();updateNode(nd.id,{model:e.target.value})}}
                       onClick={e=>e.stopPropagation()}
-                      style={{flex:1,background:t.nodeBg,color:mdl.color,fontSize:12,
+                      style={{flex:1,background:t.nodeBg,color:mdl.color,fontSize:12.5,
                         padding:'4px 8px',borderRadius:4,border:`1px solid ${t.accent}22`,cursor:'pointer'}}>
                       {MODELS.map(m=><option key={m.id} value={m.id}>{m.label} ({m.cost})</option>)}
                     </select>
@@ -1634,7 +1635,7 @@ function App(){
                   {/* BEHAVIOUR PROMPT — read-only display */}
                   <div className={sb} style={{flex:1,padding:'10px 14px 12px',minHeight:0,overflow:'auto',
                     overscrollBehavior:'contain'}}>
-                    <span style={{fontSize:10,fontWeight:700,color:'#666',letterSpacing:1.5,marginBottom:6,
+                    <span style={{fontSize:10.5,fontWeight:700,color:'#666',letterSpacing:1.5,marginBottom:8,
                       textTransform:'uppercase',display:'block',flexShrink:0}}>BEHAVIOUR PROMPT</span>
                     <div style={{fontSize:11.5,lineHeight:1.6,color:isErr?'#cc9999':t.text+'cc',
                       whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{nd.prompt}</div>
@@ -1712,10 +1713,12 @@ function App(){
             const isHov=hoverWire===wd.i;
             /* When any wire is hovered, dim all others */
             const anyHov=hoverWire!==null;
-            /* Also highlight if hovered node is connected */
+            /* Highlight if hovered OR selected node is connected */
             const nodeHov=hoverNode!==null&&(wd.src===hoverNode||wd.tgt===hoverNode);
-            const lit=isHov||nodeHov;
-            const dim=anyHov&&!lit||(hoverNode!==null&&!nodeHov);
+            const nodeSel=selected!==null&&(wd.src===selected||wd.tgt===selected);
+            const lit=isHov||nodeHov||nodeSel;
+            const anyActive=anyHov||hoverNode!==null||selected!==null;
+            const dim=anyActive&&!lit;
             const mainOpacity=wd.isErr?0.7:lit?0.9:dim?0.15:0.55;
             const mainWidth=wd.isErr?2:lit?2.8:1.6;
             const flowOpacity=lit?1:dim?0.2:0.8;
