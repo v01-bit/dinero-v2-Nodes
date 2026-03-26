@@ -1,0 +1,5 @@
+backups/
+node_modules/
+.claude/
+Documents/
+test.html

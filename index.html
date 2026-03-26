@@ -1,0 +1,1647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>DINERO v2 — Node Architect</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{width:100%;height:100%;overflow:hidden;background:#1a1a1a;font-family:'Segoe UI','Inter',system-ui,sans-serif;color:#ccc;scrollbar-width:thin;scrollbar-color:#44444466 transparent}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#44444466;border-radius:4px}
+.sb-38d07a::-webkit-scrollbar-thumb{background:#38d07a44}.sb-38d07a{scrollbar-width:thin;scrollbar-color:#38d07a44 transparent}
+.sb-d4a030::-webkit-scrollbar-thumb{background:#d4a03044}.sb-d4a030{scrollbar-width:thin;scrollbar-color:#d4a03044 transparent}
+.sb-4098d8::-webkit-scrollbar-thumb{background:#4098d844}.sb-4098d8{scrollbar-width:thin;scrollbar-color:#4098d844 transparent}
+.sb-9860d8::-webkit-scrollbar-thumb{background:#9860d844}.sb-9860d8{scrollbar-width:thin;scrollbar-color:#9860d844 transparent}
+select{-webkit-appearance:none;-moz-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 8px center;padding-right:22px!important}
+select option{background:#1a1a1a;color:#ccc}
+textarea{resize:none}
+input,textarea,select{outline:none;border:none;font-family:inherit}
+@keyframes flowDash{from{stroke-dashoffset:24}to{stroke-dashoffset:0}}
+.wire-flow{animation:flowDash 0.6s linear infinite}
+@keyframes wireRetract{0%{opacity:1;stroke-dashoffset:0}100%{opacity:0;stroke-dashoffset:1000}}
+@keyframes errorPulse{0%,100%{box-shadow:0 0 30px #cc333344,inset 0 0 15px #cc333311}50%{box-shadow:0 0 40px #cc333366,inset 0 0 20px #cc333322}}
+@keyframes portPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.4)}}
+.wire-dying{animation:wireRetract 0.5s ease-in forwards}
+@keyframes fadeIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.panel-enter{animation:fadeIn 0.2s ease-out}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:200}
+.modal-box{background:#252525;border:1px solid #444;border-radius:12px;padding:28px 32px;min-width:340px;box-shadow:0 8px 40px rgba(0,0,0,0.5)}
+.modal-box h3{color:#e0e0e0;font-size:15px;margin-bottom:10px}
+.modal-box p{color:#999;font-size:13px;margin-bottom:20px;line-height:1.5}
+.modal-box .btn-row{display:flex;gap:10px;justify-content:flex-end}
+.modal-box button{padding:7px 18px;border-radius:6px;border:1px solid #555;background:#333;color:#ccc;font-size:12px;cursor:pointer;font-weight:600}
+.modal-box button.danger{background:#cc3333;border-color:#cc3333;color:#fff}
+.modal-box button:hover{filter:brightness(1.2)}
+/* Wizard */
+.wiz-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:200}
+.wiz-box{background:#1e1e1e;border:1px solid #333;border-radius:14px;width:440px;max-height:80vh;overflow:auto;box-shadow:0 12px 50px rgba(0,0,0,0.6)}
+.wiz-hdr{padding:18px 24px 12px;border-bottom:1px solid #333;display:flex;align-items:center;gap:10px}
+.wiz-hdr h3{color:#e0e0e0;font-size:14px;font-weight:700;flex:1;margin:0}
+.wiz-body{padding:18px 24px}
+.wiz-field{margin-bottom:16px}
+.wiz-field label{display:block;font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#888;margin-bottom:6px}
+.wiz-field input,.wiz-field textarea,.wiz-field select{width:100%;background:#252525;border:1px solid #444;border-radius:6px;color:#ccc;font-size:12px;padding:8px 10px;outline:none;font-family:inherit;box-sizing:border-box}
+.wiz-field input:focus,.wiz-field textarea:focus,.wiz-field select:focus{border-color:#78c0f0}
+.wiz-field textarea{resize:vertical;min-height:70px;line-height:1.5}
+.wiz-tier-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.wiz-tier-btn{padding:10px 12px;border-radius:8px;border:2px solid transparent;cursor:pointer;text-align:left;transition:border-color 0.15s}
+.wiz-tier-btn:hover{filter:brightness(1.15)}
+.wiz-tier-btn .wiz-tier-name{font-size:11px;font-weight:700;display:block}
+.wiz-tier-btn .wiz-tier-desc{font-size:9px;opacity:0.6;margin-top:2px;display:block}
+.wiz-model-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+.wiz-model-btn{padding:8px;border-radius:6px;background:#252525;border:2px solid transparent;cursor:pointer;text-align:center;transition:border-color 0.15s}
+.wiz-model-btn:hover{filter:brightness(1.15)}
+.wiz-model-btn .wiz-m-name{font-size:10px;font-weight:600;display:block}
+.wiz-model-btn .wiz-m-cost{font-size:9px;opacity:0.5;display:block;margin-top:2px}
+.wiz-foot{padding:14px 24px 18px;border-top:1px solid #333;display:flex;gap:10px;justify-content:flex-end}
+.wiz-foot button{padding:8px 20px;border-radius:6px;border:1px solid #555;background:#333;color:#ccc;font-size:12px;cursor:pointer;font-weight:600}
+.wiz-foot button.primary{border-color:currentColor}
+.wiz-foot button:hover{filter:brightness(1.2)}
+.wiz-foot button:disabled{opacity:0.3;cursor:default;filter:none}
+/* Side panel styles */
+.sp-section{margin-bottom:18px;border:1px solid #ffffff0a;border-radius:8px;overflow:hidden}
+.sp-section-hdr{padding:8px 12px;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#888;background:#ffffff06;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none}
+.sp-section-body{padding:8px 12px}
+.sp-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid #ffffff06;font-size:11px;line-height:1.6}
+.sp-row:last-child{border-bottom:none}
+.sp-label{color:#888}
+.sp-val{color:#ccc;font-weight:600;font-variant-numeric:tabular-nums}
+.sp-log{padding:4px 0;border-bottom:1px solid #ffffff06;font-size:10.5px;line-height:1.5;display:flex;gap:8px}
+.sp-log:last-child{border-bottom:none}
+.sp-log-ts{color:#555;flex-shrink:0;font-variant-numeric:tabular-nums;min-width:58px}
+.sp-log-msg{color:#aaa}
+.sp-bar-track{height:4px;background:#ffffff0a;border-radius:2px;overflow:hidden;margin-top:3px}
+.sp-bar-fill{height:100%;border-radius:2px;transition:width 0.8s ease}
+.sp-metric{padding:6px 0;border-bottom:1px solid #ffffff06}
+.sp-metric:last-child{border-bottom:none}
+.sp-metric-top{display:flex;justify-content:space-between;font-size:11px}
+.sp-activity{padding:10px 12px;margin-bottom:14px;border-radius:8px;font-size:11.5px;line-height:1.6;border-left:2px solid;position:relative}
+.sp-activity::before{content:'';position:absolute;top:10px;left:-6px;width:8px;height:8px;border-radius:4px;animation:pulse 2s ease infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.8)}}
+.sp-dep{display:flex;align-items:center;gap:6px;padding:4px 0;font-size:11px;border-bottom:1px solid #ffffff06}
+.sp-dep:last-child{border-bottom:none}
+.sp-dep-arrow{font-size:8px;opacity:0.5}
+.sp-prompt-box{font-size:11px;line-height:1.6;padding:8px 10px;border-radius:6px;border:1px solid #ffffff0a;white-space:pre-wrap;max-height:120px;overflow:auto}
+@keyframes logSlide{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.sp-log-new{animation:logSlide 0.3s ease-out}
+@keyframes groupFadeIn{from{opacity:0;transform:scale(0.95) translateY(12px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes nodeFadeIn{from{opacity:0;transform:scale(0.92) translateY(8px)}to{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes wireFadeIn{from{opacity:0}to{opacity:1}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="text/babel" data-type="module">
+const {useState,useRef,useCallback,useEffect,useMemo}=React;
+
+/* ═══════════════════ CONSTANTS ═══════════════════ */
+const TIERS={
+  orchestrator:{nodeBg:'#162a1e',headerBg:'#1a3028',accent:'#38d07a',text:'#70e8a8'},
+  manager:{nodeBg:'#262010',headerBg:'#2a2418',accent:'#d4a030',text:'#e8c868'},
+  worker:{nodeBg:'#101c28',headerBg:'#162430',accent:'#4098d8',text:'#78c0f0'},
+  infra:{nodeBg:'#1c1224',headerBg:'#221830',accent:'#9860d8',text:'#b888f0'},
+};
+const MODELS=[
+  {id:'rules',label:'Code / Rules',cost:'Free',color:'#888'},
+  {id:'small',label:'Small LLM',cost:'$',color:'#4098d8'},
+  {id:'medium',label:'Medium LLM',cost:'$$',color:'#d4a030'},
+  {id:'premium',label:'Premium LLM',cost:'$$$',color:'#38d07a'},
+  {id:'embeddings',label:'Embeddings',cost:'$',color:'#9860d8'},
+  {id:'custom',label:'Custom',cost:'—',color:'#666'},
+];
+const GH=44, GAP=40, MIN_GW=400, MIN_GH=200, MIN_NW=280, MIN_NH=120;
+const tierMap={orchestrator:'orchestrator',managers:'manager',workers:'worker',infra:'infra'};
+
+/* ═══════════════════ DEFAULT DATA ═══════════════════ */
+/* Widescreen layout: wider nodes (380x160), generous spacing, centered on canvas */
+const NW=380, NH=160, NS=40; /* default node width, height, spacing */
+const EP=40; /* edge padding inside groups */
+const NG=40; /* horizontal gap between nodes */
+const VG=50; /* vertical gap between node rows */
+/* Computed positions for evenly-spaced 4-column layout */
+const C0=EP, C1=EP+NW+NG, C2=EP+2*(NW+NG), C3=EP+3*(NW+NG); /* col x positions */
+const R0=EP, R1=EP+NH+VG; /* row y positions */
+const GW4=EP+4*NW+3*NG+EP; /* group width for 4 cols: 1760 */
+const GW2=EP+2*NW+1*NG+EP; /* group width for 2 cols: 880 */
+const GW1=EP+NW+EP; /* group width for 1 col: 460 */
+const GH1=EP+NH+EP+GH; /* group height for 1 row + header: 284 */
+const GH2=EP+2*NH+VG+EP+GH; /* group height for 2 rows + header: 494 */
+function mkGroups(){return[
+  {id:'orchestrator',label:'Orchestrator',tier:'orchestrator',x:690,y:60,w:GW1,h:GH1},
+  {id:'managers',label:'Managers',tier:'manager',x:80,y:410,w:GW4,h:GH1},
+  {id:'workers',label:'Workers',tier:'worker',x:80,y:760,w:GW4,h:GH2},
+  {id:'infra',label:'Infrastructure',tier:'infra',x:480,y:1320,w:GW2,h:GH1},
+]}
+function mkNodes(){return[
+  {id:'din-core',gid:'orchestrator',label:'DIN-CORE',x:C0,y:R0,w:NW,h:NH,model:'premium',status:'ok',auth:false,
+   prompt:'You are DIN-CORE. Maintain the unified world model. Coordinate all managers. Resolve inter-domain conflicts. Set system posture from regime. Your decisions bind all downstream nodes.'},
+  {id:'regime-mgr',gid:'managers',label:'Regime manager',x:C0,y:R0,w:NW,h:NH,model:'medium',status:'ok',auth:true,
+   prompt:'Classify: CRISIS / RISK_OFF / NEUTRAL / RISK_ON / TRENDING_BULL / TRENDING_BEAR. Confidence 0-100. Posture: aggression 0-1, max size, allowed instruments, signal threshold. Binding on all downstream.'},
+  {id:'fusion-mgr',gid:'managers',label:'Fusion manager',x:C1,y:R0,w:NW,h:NH,model:'premium',status:'ok',auth:false,
+   prompt:'Combine specialist outputs into unified belief state. Resolve macro vs sentiment conflicts explicitly. Only fire on >10% shift in any input. Output conviction scores with evidence chain.'},
+  {id:'risk-mgr',gid:'managers',label:'Risk manager',x:C2,y:R0,w:NW,h:NH,model:'rules',status:'ok',auth:false,
+   prompt:'Max 5%/trade, 15% daily loss, 30% drawdown, 90% exposure. CRISIS=0.25x, RISK_OFF=0.5x sizing. Block violations. Log all blocks with reason. No LLM. No override.'},
+  {id:'portfolio-mgr',gid:'managers',label:'Portfolio manager',x:C3,y:R0,w:NW,h:NH,model:'medium',status:'ok',auth:false,
+   prompt:'Manage portfolio allocation across strategies. Rebalance on regime change. Track sector and factor exposure. Report daily PnL attribution and exposure summary.'},
+  {id:'market-data',gid:'workers',label:'Market data',x:C0,y:R0,w:NW,h:NH,model:'rules',status:'ok',auth:false,
+   prompt:'Price feed ingestion from Alpaca and backup sources. Normalize OHLCV data. Detect stale feeds. Publish on 1s/1m/5m/1h candles.'},
+  {id:'news-ingest',gid:'workers',label:'News ingest',x:C1,y:R0,w:NW,h:NH,model:'small',status:'ok',auth:false,
+   prompt:'Ingest news from RSS, Twitter, Reddit. Tag by ticker, sector, macro relevance. Deduplicate. Score urgency 0-10. Route to sentiment node.'},
+  {id:'macro-data',gid:'workers',label:'Macro data',x:C2,y:R0,w:NW,h:NH,model:'rules',status:'ok',auth:false,
+   prompt:'Collect yields, VIX, DXY, put/call ratios, MOVE index. Publish deltas on change. Flag regime-relevant moves.'},
+  {id:'correlation-mon',gid:'workers',label:'Correlation monitor',x:C3,y:R0,w:NW,h:NH,model:'rules',status:'ok',auth:false,
+   prompt:'Rolling 20/60/120-day correlation matrix across held positions. Alert on correlation breakdowns or spikes above 0.85. Feed to risk manager.'},
+  {id:'macro-spec',gid:'workers',label:'Macro specialist',x:C0,y:R1,w:NW,h:NH,model:'medium',status:'error',auth:false,
+   prompt:'Interpret growth, inflation, rates data. Generate macro thesis with confidence. Identify inflection points. Output structured view to fusion.'},
+  {id:'sentiment',gid:'workers',label:'Sentiment node',x:C1,y:R1,w:NW,h:NH,model:'small',status:'ok',auth:false,
+   prompt:'Score sentiment per ticker and aggregate. Use news + social inputs. Output -1 to +1 with confidence. Flag rapid shifts as signals.'},
+  {id:'strategy',gid:'workers',label:'Strategy node',x:C2,y:R1,w:NW,h:NH,model:'medium',status:'ok',auth:false,
+   prompt:'Generate trade opportunities from fusion output. Size per regime and risk constraints. Require edge > threshold. Output structured trade proposals.'},
+  {id:'execution',gid:'workers',label:'Execution node',x:C3,y:R1,w:NW,h:NH,model:'rules',status:'ok',auth:false,
+   prompt:'Alpaca order execution. TWAP/VWAP for large orders. Confirm fills. Report slippage. Route to memory and review on completion.'},
+  {id:'memory',gid:'infra',label:'Memory node',x:C0,y:R0,w:NW,h:NH,model:'embeddings',status:'ok',auth:false,
+   prompt:'Vector recall and pattern matching. Store trade outcomes, regime transitions, notable events. Retrieve analogues on request. Feed historical context upstream.'},
+  {id:'review',gid:'infra',label:'Review node',x:C1,y:R0,w:NW,h:NH,model:'medium',status:'ok',auth:false,
+   prompt:'Score completed trades on process and outcome. Attribution analysis. Identify systematic errors. Feed learnings to DIN-CORE and fusion for calibration.'},
+]}
+function mkWires(){return[
+  ['din-core','regime-mgr'],['din-core','fusion-mgr'],['din-core','risk-mgr'],['din-core','portfolio-mgr'],
+  ['market-data','fusion-mgr'],['news-ingest','sentiment'],['macro-data','macro-spec'],
+  ['correlation-mon','risk-mgr'],['macro-spec','fusion-mgr'],['sentiment','fusion-mgr'],
+  ['regime-mgr','strategy'],['fusion-mgr','strategy'],['risk-mgr','execution'],['portfolio-mgr','execution'],
+  ['strategy','execution'],['execution','memory'],['execution','review'],
+  ['memory','fusion-mgr'],['memory','din-core'],['review','din-core'],
+]}
+
+/* ═══════════════════ GEOMETRY HELPERS ═══════════════════ */
+function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
+function nAbs(n,gs){const g=gs.find(g=>g.id===n.gid);return g?{x:g.x+n.x,y:g.y+GH+2+n.y}:{x:n.x,y:n.y}}
+function nCtr(n,gs){const a=nAbs(n,gs);return{x:a.x+n.w/2,y:a.y+n.h/2}}
+function pPos(n,gs,s){const a=nAbs(n,gs);return s==='left'?{x:a.x,y:a.y+n.h/2}:s==='right'?{x:a.x+n.w,y:a.y+n.h/2}:s==='top'?{x:a.x+n.w/2,y:a.y}:{x:a.x+n.w/2,y:a.y+n.h}}
+
+function bestSides(cA,cB){
+  const dx=cB.x-cA.x,dy=cB.y-cA.y;
+  if(Math.abs(dx)>Math.abs(dy)*0.6)return[dx>0?'right':'left',dx>0?'left':'right'];
+  return[dy>0?'bottom':'top',dy>0?'top':'bottom'];
+}
+
+/* Structured bezier routing — avoids all intermediate nodes, 2-pass collision avoidance */
+function makeWirePath(x1,y1,x2,y2,s1,s2,allNodes,gs,srcId,tgtId){
+  const dist=Math.sqrt((x2-x1)**2+(y2-y1)**2);
+  const cp=Math.max(90,Math.min(dist*0.45,300));
+  let cx1=x1,cy1=y1,cx2=x2,cy2=y2;
+  if(s1==='right')cx1+=cp;else if(s1==='left')cx1-=cp;
+  if(s1==='bottom')cy1+=cp;else if(s1==='top')cy1-=cp;
+  if(s2==='right')cx2+=cp;else if(s2==='left')cx2-=cp;
+  if(s2==='bottom')cy2+=cp;else if(s2==='top')cy2-=cp;
+
+  /* 2-pass collision avoidance with 20 sample points per pass */
+  const margin=40;
+  for(let pass=0;pass<2;pass++){
+    let pushX=0,pushY=0,hits=0;
+    const damping=pass===0?0.6:0.3;
+    for(let t=0.1;t<=0.9;t+=0.04){
+      const it=1-t;
+      const sx=it*it*it*x1+3*it*it*t*cx1+3*it*t*t*cx2+t*t*t*x2;
+      const sy=it*it*it*y1+3*it*it*t*cy1+3*it*t*t*cy2+t*t*t*y2;
+      for(const nd of allNodes){
+        if(nd.id===srcId||nd.id===tgtId)continue;
+        const a=nAbs(nd,gs);
+        const rx=a.x-margin,ry=a.y-margin,rw=nd.w+margin*2,rh=nd.h+margin*2;
+        if(sx>rx&&sx<rx+rw&&sy>ry&&sy<ry+rh){
+          const ncx=a.x+nd.w/2,ncy=a.y+nd.h/2;
+          const dx=sx-ncx,dy=sy-ncy;
+          const force=nd.h/2+80;
+          if(Math.abs(dy)>Math.abs(dx)){pushY+=(dy>0?force:-force)}
+          else{pushX+=(dx>0?force:-force)}
+          hits++;
+        }
+      }
+    }
+    if(hits>0){
+      const avgX=pushX/hits*damping, avgY=pushY/hits*damping;
+      cx1+=avgX;cy1+=avgY;cx2+=avgX;cy2+=avgY;
+    }else break; /* No collisions, skip second pass */
+  }
+  return`M${x1},${y1} C${cx1},${cy1} ${cx2},${cy2} ${x2},${y2}`;
+}
+
+function rectsOverlap(a,b,gap){return a.x<b.x+b.w+gap&&a.x+a.w+gap>b.x&&a.y<b.y+b.h+gap&&a.y+a.h+gap>b.y}
+function pushGroups(cid,gs){
+  let a=gs.map(g=>({...g}));
+  for(let it=0;it<30;it++){let p=false;
+    for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++){
+      if(!rectsOverlap(a[i],a[j],GAP))continue;p=true;
+      const oR=(a[i].x+a[i].w+GAP)-a[j].x,oL=(a[j].x+a[j].w+GAP)-a[i].x;
+      const oD=(a[i].y+a[i].h+GAP)-a[j].y,oU=(a[j].y+a[j].h+GAP)-a[i].y;
+      const mn=Math.min(oR,oL,oD,oU);
+      const iIsDragged=a[i].id===cid,jIsDragged=a[j].id===cid;
+      if(iIsDragged){
+        /* Dragged group stays, push the other */
+        if(mn===oR)a[j].x+=oR;else if(mn===oL)a[j].x-=oL;
+        else if(mn===oD)a[j].y+=oD;else a[j].y-=oU;
+      }else if(jIsDragged){
+        if(mn===oR)a[i].x-=oR;else if(mn===oL)a[i].x+=oL;
+        else if(mn===oD)a[i].y-=oD;else a[i].y+=oU;
+      }else{
+        /* Neither is dragged — split 50/50 */
+        const half=mn/2;
+        if(mn===oR){a[i].x-=half;a[j].x+=half}else if(mn===oL){a[i].x+=half;a[j].x-=half}
+        else if(mn===oD){a[i].y-=half;a[j].y+=half}else{a[i].y+=half;a[j].y-=half}
+      }
+    }if(!p)break;}return a;
+}
+
+/* Check if point is near a bezier path (for cable splice detection) */
+function pointNearBezier(px,py,pathStr,threshold){
+  try{
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+    p.setAttribute('d',pathStr);svg.appendChild(p);document.body.appendChild(svg);
+    const len=p.getTotalLength();
+    let minD=Infinity;
+    for(let t=0;t<=1;t+=0.05){
+      const pt=p.getPointAtLength(t*len);
+      const d=Math.sqrt((pt.x-px)**2+(pt.y-py)**2);
+      if(d<minD)minD=d;
+    }
+    document.body.removeChild(svg);
+    return minD<threshold;
+  }catch(e){return false}
+}
+
+let _nid=100;
+function newId(){return'n-'+(_nid++)}
+
+/* ═══════════════════ LIVE PANEL SIMULATION ═══════════════════ */
+const TICKERS=['AAPL','TSLA','NVDA','MSFT','AMZN','GOOG','META','SPY','QQQ','IWM','GLD','TLT','VIX','BTC','ETH'];
+const REGIMES=['CRISIS','RISK_OFF','NEUTRAL','RISK_ON','TRENDING_BULL','TRENDING_BEAR'];
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const rnd=(a,b)=>+(a+Math.random()*(b-a)).toFixed(2);
+const rint=(a,b)=>Math.floor(a+Math.random()*(b-a));
+const ts=()=>new Date().toLocaleTimeString('en-US',{hour12:false});
+const jitter=(base,pct)=>+(base*(1+((Math.random()-0.5)*2*pct))).toFixed(base>=10?0:2);
+
+/* Per-node activity message generators */
+const activityGen={
+  orchestrator:()=>{
+    const msgs=[
+      `Evaluating regime stability — current classification ${pick(REGIMES)} held for ${rint(2,48)} cycles. Confidence trending ${pick(['up','stable','down'])}. Monitoring ${rint(3,8)} pending manager updates before next coordination sweep.`,
+      `Resolving conflict between Fusion (bearish −${rnd(5,25)}%) and Regime (${pick(REGIMES)}). Applying weighted authority: Regime ${rnd(55,80)}% / Fusion ${rnd(20,45)}%. Pushing unified directive downstream.`,
+      `Coordinating system-wide posture shift. ${rint(2,5)} managers acknowledging. Risk manager enforcing new limits. Memory node queried for historical analogues within ${rint(3,12)} cycles.`,
+    ];return pick(msgs);
+  },
+  manager:()=>{
+    const t=pick(TICKERS);
+    const msgs=[
+      `Aggregating ${rint(3,7)} specialist inputs for ${t} conviction scoring. Current spread: bullish ${rnd(20,60)}% / bearish ${rnd(20,60)}%. Awaiting sentiment rescore before publishing unified belief state.`,
+      `Enforcing risk limits after ${t} position approached ${rnd(3,5)}% threshold. Reducing exposure by ${rnd(10,40)}%. Delegating rebalance to execution node. ${rint(1,4)} other positions flagged for review.`,
+      `Processing regime transition signal from DIN-CORE. Adjusting downstream parameters: aggression ${rnd(0.2,0.8)}, signal threshold ${rnd(0.5,0.85)}. ${rint(2,6)} strategy recalculations queued.`,
+    ];return pick(msgs);
+  },
+  worker:()=>{
+    const t=pick(TICKERS);
+    const msgs=[
+      `Ingesting ${rint(50,500)} data points for ${t}. Detecting ${pick(['bullish divergence','mean reversion signal','momentum breakout','volatility contraction'])} on ${pick(['1m','5m','1h','4h'])} timeframe. Routing to fusion with confidence ${rnd(55,95)}%.`,
+      `Processing batch #${rint(4000,9999)}. ${rint(2,8)} signals generated this cycle. Highest conviction: ${t} ${pick(['long','short'])} at ${rnd(60,95)}%. Queue depth: ${rint(0,12)} pending. Avg latency ${rint(8,120)}ms.`,
+      `Executing ${pick(['TWAP','VWAP','limit'])} order for ${rint(10,500)} shares ${t} at $${rnd(100,800)}. Fill rate: ${rnd(85,100)}%. Slippage: ${rnd(0,0.15)}%. Routing confirmation to memory and review.`,
+    ];return pick(msgs);
+  },
+  infra:()=>{
+    const msgs=[
+      `Vector store servicing ${rint(20,200)} queries/min. Retrieved ${rint(3,15)} analogues for current market pattern (cosine similarity > ${rnd(0.82,0.96)}). Cache hit rate ${rnd(88,99)}%. Index lag: ${rnd(0.5,3.5)}s.`,
+      `Scoring ${rint(5,30)} completed trades from last session. Win rate: ${rnd(45,72)}%. Mean alpha: ${rnd(-0.5,2.8)}bps. Identifying ${rint(0,4)} systematic biases. Feeding calibration data to DIN-CORE.`,
+      `Embedding pipeline processing ${rint(100,2000)} new events. Deduplication removed ${rint(5,25)}%. Storage utilisation: ${rnd(40,85)}%. Running compaction on indices older than ${rint(24,168)}h.`,
+    ];return pick(msgs);
+  },
+};
+
+/* Log message generators per tier */
+const logGen={
+  orchestrator:()=>[
+    `Regime update: ${pick(REGIMES)} → ${pick(REGIMES)} (conf ${rint(60,98)}%)`,
+    `Coordination sweep complete — ${rint(3,6)} managers synced`,
+    `Conflict resolved: ${pick(['macro > sentiment','regime > fusion','risk override accepted'])}`,
+    `Memory analogue retrieved: ${pick(['2024 rate-cut cycle','2023 banking stress','2022 inflation peak'])} (sim ${rnd(0.78,0.95)})`,
+    `System posture adjusted: aggression ${rnd(0.2,0.9)}, threshold ${rnd(0.5,0.85)}`,
+    `Downstream binding pushed — ${rint(8,15)} nodes acknowledged`,
+    `Health check: ${rint(13,15)}/15 nodes responding, avg latency ${rint(15,80)}ms`,
+  ],
+  manager:()=>[
+    `Belief state updated: ${pick(TICKERS)} conviction ${rnd(-1,1)} (was ${rnd(-1,1)})`,
+    `Risk limit enforced: ${pick(TICKERS)} capped at ${rnd(2,5)}%`,
+    `Delegated to Strategy: generate ${pick(TICKERS)} ${pick(['long','short'])} proposal`,
+    `Fusion conflict: macro says ${pick(['bearish','bullish'])} vs sentiment ${pick(['bearish','bullish'])} — resolved via ${pick(['confidence weighting','recency bias','regime override'])}`,
+    `Regime signal received — adjusting all downstream thresholds`,
+    `Portfolio rebalance triggered: ${rint(2,8)} positions affected`,
+    `Correlation alert: ${pick(TICKERS)}/${pick(TICKERS)} > 0.${rint(85,98)}`,
+  ],
+  worker:()=>[
+    `Processed ${rint(50,800)} records in ${rnd(0.3,4.5)}s`,
+    `Signal: ${pick(TICKERS)} ${pick(['bearish','bullish','neutral'])} (${rnd(-1,1)}, conf ${rint(40,98)}%)`,
+    `API call: ${pick(['200 OK','200 OK','200 OK','429 Rate limited','200 OK'])} (${pick(['Alpaca','Yahoo','Reddit','Twitter'])})`,
+    `Order filled: ${rint(10,500)}x ${pick(TICKERS)} @ $${rnd(50,800)} — slippage ${rnd(0,0.2)}%`,
+    `Alert: ${pick(['VIX spike >22','Unusual volume','Correlation breakdown','Stale feed detected'])}`,
+    `Cache ${pick(['hit','hit','hit','miss'])}: ratio ${rnd(88,99)}%`,
+    `Batch #${rint(4000,9999)} complete — ${rint(1,8)} signals emitted`,
+  ],
+  infra:()=>[
+    `Vector query: ${rint(3,20)} results (${rnd(1,15)}ms)`,
+    `Trade scored: ${pick(TICKERS)} — process ${rnd(40,95)}/100, outcome ${rnd(-20,60)}bps`,
+    `Embedding batch: ${rint(100,2000)} items indexed`,
+    `Compaction: freed ${rnd(50,500)}MB from stale indices`,
+    `Pattern match: current regime ~ ${pick(['2024-Q1','2023-Q3','2022-Q4'])} (similarity ${rnd(0.75,0.96)})`,
+    `Dependency health: all ${rint(3,5)} connections nominal`,
+    `Deduplication pass: ${rint(2,15)}% redundant entries removed`,
+  ],
+};
+
+/* Metrics templates per tier */
+function metricsFor(tier,isErr){
+  const e=isErr?0.7:1;
+  if(tier==='orchestrator')return[
+    {label:'Coordination cycles',value:`${jitter(847,0.03)}/hr`,bar:jitter(78,0.05),color:'#38d07a'},
+    {label:'Avg decision latency',value:`${jitter(42,0.15)}ms`,bar:jitter(25,0.1),color:'#38d07a'},
+    {label:'Conflict resolution rate',value:`${jitter(94.2,0.02)}%`,bar:jitter(94,0.02),color:'#38d07a'},
+    {label:'Downstream compliance',value:`${jitter(99.1,0.01)}%`,bar:jitter(99,0.01),color:'#38d07a'},
+    {label:'Token usage (24h)',value:`${jitter(142000,0.08).toLocaleString()} tok`,bar:jitter(62,0.1),color:'#38d07a'},
+    {label:'Uptime',value:`${jitter(99.97,0.002)}%`,bar:jitter(99.9,0.001),color:'#38d07a'},
+  ];
+  if(tier==='manager')return[
+    {label:'Signals processed',value:`${jitter(2340,0.05).toLocaleString()}/hr`,bar:jitter(72,0.08),color:'#d4a030'},
+    {label:'Belief update frequency',value:`${jitter(8.4,0.12)}/min`,bar:jitter(56,0.1),color:'#d4a030'},
+    {label:'Conviction accuracy (7d)',value:`${jitter(68.4*e,0.04)}%`,bar:jitter(68*e,0.04),color:isErr?'#cc3333':'#d4a030'},
+    {label:'Override count (24h)',value:`${jitter(12,0.2)}`,bar:jitter(18,0.15),color:'#d4a030'},
+    {label:'Token usage (24h)',value:`${jitter(89000,0.1).toLocaleString()} tok`,bar:jitter(48,0.1),color:'#d4a030'},
+    {label:'Risk limit triggers',value:`${rint(0,8)}`,bar:jitter(15,0.2),color:'#d4a030'},
+  ];
+  if(tier==='worker')return[
+    {label:'Throughput',value:`${jitter(4720,0.06).toLocaleString()} ops/hr`,bar:jitter(74,0.08)*e,color:isErr?'#cc3333':'#4098d8'},
+    {label:'Avg latency',value:`${jitter(34*(/e/?1:3),0.15)}ms`,bar:jitter(22*(isErr?3:1),0.1),color:isErr?'#cc3333':'#4098d8'},
+    {label:'Signal accuracy (7d)',value:`${jitter(71.3*e,0.04)}%`,bar:jitter(71*e,0.04),color:isErr?'#cc3333':'#4098d8'},
+    {label:'Error rate',value:`${jitter(isErr?12.4:0.8,0.2)}%`,bar:jitter(isErr?42:5,0.15),color:isErr?'#cc3333':'#4098d8'},
+    {label:'Queue depth',value:`${rint(0,isErr?25:8)}`,bar:jitter(isErr?65:12,0.2),color:isErr?'#cc3333':'#4098d8'},
+    {label:'Cache hit rate',value:`${jitter(isErr?45:94.2,0.03)}%`,bar:jitter(isErr?45:94,0.03),color:isErr?'#cc3333':'#4098d8'},
+  ];
+  return[
+    {label:'Queries/min',value:`${jitter(184,0.08)}`,bar:jitter(62,0.1),color:'#9860d8'},
+    {label:'Avg retrieval time',value:`${jitter(8.2,0.15)}ms`,bar:jitter(18,0.1),color:'#9860d8'},
+    {label:'Vector store size',value:`${jitter(1.24,0.02)}M embeddings`,bar:jitter(58,0.05),color:'#9860d8'},
+    {label:'Storage used',value:`${jitter(4.7,0.04)} / 20 GB`,bar:jitter(23,0.04),color:'#9860d8'},
+    {label:'Index freshness lag',value:`${jitter(2.1,0.3)}s`,bar:jitter(12,0.2),color:'#9860d8'},
+    {label:'Dedup efficiency',value:`${jitter(96.8,0.02)}%`,bar:jitter(97,0.02),color:'#9860d8'},
+  ];
+}
+
+/* Processing state per tier */
+function processingFor(tier,nd,isErr){
+  const t=pick(TICKERS);
+  if(tier==='orchestrator')return{
+    inputs:[{src:'Regime manager',val:`Classification: ${pick(REGIMES)} (${rint(60,98)}%)`},
+            {src:'Fusion manager',val:`Belief: ${pick(['bullish','bearish','neutral'])} tilt ${rnd(5,30)}%`},
+            {src:'Risk manager',val:`Exposure: ${rnd(40,88)}% — ${rint(0,3)} violations`},
+            {src:'Memory node',val:`Analogue: ${pick(['2024-Q1','2023-Q3','2022-Q4'])} (sim ${rnd(0.78,0.95)})`}],
+    decisions:[`Regime hold vs transition: evaluating ${rint(3,8)} indicators`,
+               `Manager priority: ${pick(['Regime','Fusion','Risk'])} has authority`,
+               `Posture adjustment: aggression ${rnd(0.3,0.8)} → ${rnd(0.3,0.8)}`],
+    outputs:[`Unified directive → all managers`,`Posture params → ${rint(3,5)} downstream`,`Memory query → pattern retrieval`],
+  };
+  if(tier==='manager')return{
+    inputs:[{src:nd.label==='Regime manager'?'DIN-CORE directive':'Multiple specialists',val:nd.label==='Regime manager'?`Posture: aggression ${rnd(0.2,0.8)}`:`${rint(3,7)} signals pending fusion`},
+            {src:'Market data',val:`${t}: $${rnd(100,800)} (${pick(['+','-'])}${rnd(0.1,3.5)}%)`},
+            {src:'Risk constraints',val:`Max ${rnd(3,5)}% per trade, ${rnd(12,18)}% daily loss cap`}],
+    decisions:[`Weighing ${rint(3,8)} conflicting signals for ${t}`,
+               `Confidence threshold: ${rnd(55,80)}% (current signal: ${rnd(40,95)}%)`,
+               `Delegation: ${pick(['approve','hold','reject'])} strategy proposal`],
+    outputs:[`Conviction update → Strategy node`,`Risk params → Execution`,`State change → DIN-CORE`],
+  };
+  if(tier==='worker')return{
+    inputs:[{src:pick(['Alpaca API','RSS feeds','Market data','Manager directive']),val:`${rint(20,500)} items queued`},
+            {src:'Regime context',val:`${pick(REGIMES)} — threshold ${rnd(0.5,0.85)}`},
+            {src:'Previous cycle',val:`${rint(2,12)} signals, ${rint(80,99)}% accuracy`}],
+    decisions:[isErr?`ERROR: ${pick(['Connection timeout','API rate limit','Parse failure','Stale data detected'])}`:`Evaluating ${t} ${pick(['momentum','mean-reversion','breakout'])} signal`,
+               `Confidence: ${rnd(isErr?10:55,isErr?35:95)}% — ${isErr?'below':'above'} threshold`,
+               `${isErr?'Retrying in '+rint(5,30)+'s':'Emitting signal to manager'}`],
+    outputs:isErr?[`Error report → DIN-CORE`,`Stale flag → dependent nodes`]:[`Signal → Fusion manager`,`Data → downstream workers`,`Metrics → review node`],
+  };
+  return{
+    inputs:[{src:'Execution node',val:`${rint(5,40)} completed trades for scoring`},
+            {src:'All workers',val:`${rint(200,2000)} events for embedding`},
+            {src:'DIN-CORE',val:`Pattern query: ${pick(['rate-cut','vol-spike','sector-rotation'])}`}],
+    decisions:[`Similarity search: ${rint(5,20)} candidates above ${rnd(0.75,0.9)} threshold`,
+               `Trade scoring: process vs outcome weighting ${rint(40,70)}/${rint(30,60)}`,
+               `Compaction: ${rint(2,8)} stale index segments identified`],
+    outputs:[`Analogues → Fusion (${rint(2,8)} patterns)`,`Scores → DIN-CORE (calibration)`,`Storage report → system log`],
+  };
+}
+
+/* ═══════════════════ LIVE PANEL COMPONENT ═══════════════════ */
+function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode}){
+  const panelRef=useRef(null);
+
+  /* Prevent wheel events from reaching the canvas */
+  useEffect(()=>{
+    const el=panelRef.current;if(!el)return;
+    const stopWheel=e=>e.stopPropagation();
+    el.addEventListener('wheel',stopWheel,{passive:false});
+    return()=>el.removeEventListener('wheel',stopWheel);
+  },[]);
+  const[tick,setTick]=useState(0);
+  const[logs,setLogs]=useState(()=>Array.from({length:12},()=>({ts:ts(),msg:pick(logGen[tier]())})));
+  const[activity,setActivity]=useState(()=>activityGen[tier]());
+  const[collapsed,setCollapsed]=useState({});
+  const accent=isErr?'#cc3333':t.accent;
+  const sb='sb-'+t.accent.replace('#','');
+
+  /* ── Dirty tracking for save flow ── */
+  const[draft,setDraft]=useState({label:nd.label,model:nd.model,prompt:nd.prompt});
+  const[saved,setSaved]=useState(false);
+  const[confirmSave,setConfirmSave]=useState(false);
+  const draftRef=useRef(draft);
+  draftRef.current=draft;
+  const prevNidRef=useRef(nd.id);
+  const prevNodeRef=useRef({label:nd.label,model:nd.model,prompt:nd.prompt});
+  /* Warn before switching nodes if dirty */
+  useEffect(()=>{
+    if(prevNidRef.current!==nd.id){
+      const p=prevNodeRef.current, d=draftRef.current;
+      if(d.label!==p.label||d.model!==p.model||d.prompt!==p.prompt){
+        /* Previous node had unsaved changes — auto-save with notification */
+        updateNode(prevNidRef.current,d);
+      }
+      prevNidRef.current=nd.id;
+    }
+    prevNodeRef.current={label:nd.label,model:nd.model,prompt:nd.prompt};
+    setDraft({label:nd.label,model:nd.model,prompt:nd.prompt});
+    setSaved(false);setConfirmSave(false);
+  },[nd.id]);
+  const isDirty=draft.label!==nd.label||draft.model!==nd.model||draft.prompt!==nd.prompt;
+  const doSave=()=>{setConfirmSave(true)};
+  const doConfirmSave=()=>{updateNode(nd.id,draft);setSaved(true);setConfirmSave(false);setTimeout(()=>setSaved(false),1500)};
+  const doCancel=()=>setDraft({label:nd.label,model:nd.model,prompt:nd.prompt});
+
+  /* Live simulation tick */
+  useEffect(()=>{
+    const iv=setInterval(()=>{
+      setTick(t=>t+1);
+      /* Add new log entry */
+      setLogs(ls=>[{ts:ts(),msg:pick(logGen[tier]()),isNew:true},...ls.slice(0,49)]);
+    },2800);
+    const iv2=setInterval(()=>{
+      setActivity(activityGen[tier]());
+    },6000);
+    return()=>{clearInterval(iv);clearInterval(iv2)};
+  },[tier]);
+
+  /* After tick, clear isNew flag */
+  useEffect(()=>{
+    if(tick===0)return;
+    const t2=setTimeout(()=>setLogs(ls=>ls.map(l=>({...l,isNew:false}))),400);
+    return()=>clearTimeout(t2);
+  },[tick]);
+
+  const toggle=k=>setCollapsed(c=>({...c,[k]:!c[k]}));
+  const model=MODELS.find(m=>m.id===nd.model)||MODELS[0];
+  const metrics=useMemo(()=>metricsFor(tier,isErr),[tick,tier,isErr]);
+  const processing=useMemo(()=>processingFor(tier,nd,isErr),[tick,tier,nd,isErr]);
+
+  /* Dependencies from wires */
+  const upstream=wires.filter(w=>w[1]===nd.id).map(w=>nodes.find(n=>n.id===w[0])).filter(Boolean);
+  const downstream=wires.filter(w=>w[0]===nd.id).map(w=>nodes.find(n=>n.id===w[1])).filter(Boolean);
+
+  const health=isErr?{label:'DEGRADED',color:'#cc3333',pct:rint(15,35)}:{
+    label:'OPERATIONAL',color:accent,pct:rint(92,100)
+  };
+
+  return(
+    <div ref={panelRef} className="panel-enter" onMouseDown={e=>e.stopPropagation()}
+      style={{position:'absolute',top:0,right:0,bottom:0,width:380,
+      zIndex:100,background:'#1a1a1afa',borderLeft:`2px solid ${accent}44`,
+      display:'flex',flexDirection:'column',overflow:'hidden',overscrollBehavior:'contain'}}>
+
+      {/* ── HEADER ── */}
+      <div style={{padding:'14px 16px',background:isErr?'#2a1414':t.headerBg,
+        borderBottom:`1px solid ${accent}22`,flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+          <div style={{width:10,height:10,borderRadius:5,background:accent,
+            boxShadow:`0 0 10px ${accent}88`}}/>
+          <div style={{flex:1}}>
+            <input value={draft.label} onChange={e=>setDraft(d=>({...d,label:e.target.value}))}
+              style={{fontSize:16,fontWeight:700,color:isErr?'#ff6666':t.text,
+                background:'transparent',border:'none',borderBottom:`1px solid ${isDirty?accent+'66':'transparent'}`,
+                width:'100%',padding:'2px 0',outline:'none',fontFamily:'inherit',
+                transition:'border-color 0.15s'}}
+              onFocus={e=>{e.target.style.borderBottomColor=accent+'66'}}
+              onBlur={e=>{if(!isDirty)e.target.style.borderBottomColor='transparent'}}/>
+            <div style={{fontSize:9,color:'#777',marginTop:2,textTransform:'uppercase',letterSpacing:1}}>
+              {tier} · {model.label} · <span style={{color:health.color}}>{health.label}</span>
+            </div>
+          </div>
+          <button onClick={()=>{if(isDirty){if(window.confirm('You have unsaved changes. Close anyway?'))onClose()}else onClose()}}
+            style={{background:'transparent',border:'none',
+            color:'#666',fontSize:18,cursor:'pointer',lineHeight:1}}>✕</button>
+        </div>
+        {/* Health bar */}
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <span style={{fontSize:8,color:'#666',letterSpacing:1}}>HEALTH</span>
+          <div style={{flex:1,height:3,background:'#ffffff0a',borderRadius:2,overflow:'hidden'}}>
+            <div style={{width:`${health.pct}%`,height:'100%',background:accent,borderRadius:2,
+              transition:'width 0.8s ease'}}/>
+          </div>
+          <span style={{fontSize:9,color:accent,fontWeight:600,fontVariantNumeric:'tabular-nums'}}>{health.pct}%</span>
+        </div>
+      </div>
+
+      {/* ── SAVE BAR (sticky when dirty) ── */}
+      {isDirty&&<div style={{padding:'8px 16px',background:accent+'18',borderBottom:`1px solid ${accent}33`,
+        display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+        <span style={{flex:1,fontSize:11,color:accent,fontWeight:600}}>Unsaved changes</span>
+        <button onClick={doCancel} style={{fontSize:11,padding:'4px 12px',borderRadius:5,
+          border:'1px solid #55555566',background:'transparent',color:'#999',cursor:'pointer'}}>Cancel</button>
+        <button onClick={doSave} style={{fontSize:11,padding:'4px 14px',borderRadius:5,
+          border:`1px solid ${accent}66`,background:accent+'22',color:t.text,cursor:'pointer',fontWeight:600}}>Save</button>
+      </div>}
+      {saved&&<div style={{padding:'6px 16px',background:'#28a74520',borderBottom:'1px solid #28a74533',
+        fontSize:11,color:'#28a745',fontWeight:600,flexShrink:0,textAlign:'center'}}>Changes saved</div>}
+
+      {/* ── SAVE CONFIRMATION OVERLAY ── */}
+      {confirmSave&&<div style={{position:'absolute',inset:0,zIndex:110,background:'rgba(0,0,0,0.6)',
+        display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+        <div style={{background:'#252525',border:'1px solid #444',borderRadius:12,padding:'24px 28px',
+          maxWidth:320,boxShadow:'0 8px 40px rgba(0,0,0,0.5)'}}>
+          <div style={{fontSize:14,fontWeight:700,color:'#e0e0e0',marginBottom:8}}>Save Changes?</div>
+          <div style={{fontSize:12,color:'#999',lineHeight:1.5,marginBottom:18}}>
+            Are you sure you want to save these changes to <strong style={{color:accent}}>{draft.label}</strong>?
+          </div>
+          <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+            <button onClick={()=>setConfirmSave(false)} style={{padding:'6px 16px',borderRadius:6,
+              border:'1px solid #555',background:'#333',color:'#ccc',fontSize:12,cursor:'pointer',fontWeight:600}}>Cancel</button>
+            <button onClick={doConfirmSave} style={{padding:'6px 16px',borderRadius:6,
+              border:`1px solid ${accent}66`,background:accent+'22',color:t.text,fontSize:12,cursor:'pointer',fontWeight:600}}>Save</button>
+          </div>
+        </div>
+      </div>}
+
+      {/* ── SCROLLABLE BODY ── */}
+      <div style={{flex:1,overflow:'auto',padding:'12px 14px',overscrollBehavior:'contain'}} className={sb}>
+
+        {/* SECTION 1: CONFIGURATION & RULES (top priority) */}
+        <div className="sp-section">
+          <div className="sp-section-hdr" onClick={()=>toggle('config')}>
+            <span>Configuration & Rules</span>
+            <span style={{fontSize:11,color:'#555'}}>{collapsed.config?'▸':'▾'}</span>
+          </div>
+          {!collapsed.config&&<div className="sp-section-body">
+            <div style={{fontSize:9,color:'#666',letterSpacing:1,marginBottom:6,fontWeight:700}}>MODEL</div>
+            <div className="sp-row">
+              <span className="sp-label">Engine</span>
+              <select value={draft.model} onChange={e=>setDraft(d=>({...d,model:e.target.value}))}
+                style={{background:'#252525',color:model.color,fontSize:11,fontWeight:600,
+                  padding:'4px 8px',borderRadius:4,border:`1px solid ${accent}22`,cursor:'pointer',
+                  fontFamily:'inherit'}}>
+                {MODELS.map(m=><option key={m.id} value={m.id}>{m.label} ({m.cost})</option>)}
+              </select>
+            </div>
+            <div className="sp-row">
+              <span className="sp-label">Cost tier</span>
+              <span className="sp-val">{model.cost}</span>
+            </div>
+            <div className="sp-row">
+              <span className="sp-label">Status</span>
+              <span className="sp-val" style={{color:isErr?'#cc3333':accent}}>{isErr?'ERROR':'Active'}</span>
+            </div>
+            <div style={{fontSize:9,color:'#666',letterSpacing:1,margin:'12px 0 6px',fontWeight:700}}>BEHAVIOUR PROMPT</div>
+            <textarea className={sb} value={draft.prompt}
+              onChange={e=>setDraft(d=>({...d,prompt:e.target.value}))}
+              style={{width:'100%',minHeight:110,fontSize:11,lineHeight:1.6,padding:'10px 12px',
+                borderRadius:6,border:`1px solid ${isDirty?accent+'44':'#ffffff0a'}`,background:'#ffffff04',
+                color:isErr?'#cc9999':'#bbb',resize:'vertical',fontFamily:'inherit',
+                outline:'none',overscrollBehavior:'contain',transition:'border-color 0.15s'}}/>
+          </div>}
+        </div>
+
+        {/* SECTION 2: LIVE ACTIVITY SUMMARY */}
+        <div className="sp-activity" style={{background:isErr?'#cc333308':`${accent}08`,
+          borderColor:accent,color:isErr?'#cc9999':'#bbb',fontSize:11,lineHeight:1.6}}>
+          <div style={{position:'absolute',top:10,left:-6,width:8,height:8,borderRadius:4,background:accent}}/>
+          {activity}
+        </div>
+
+        {/* SECTION 3: REAL-TIME PROCESSING */}
+        <div className="sp-section">
+          <div className="sp-section-hdr" onClick={()=>toggle('proc')}>
+            <span>Real-time Processing</span>
+            <span style={{fontSize:11,color:'#555'}}>{collapsed.proc?'▸':'▾'}</span>
+          </div>
+          {!collapsed.proc&&<div className="sp-section-body">
+            <div style={{fontSize:9,color:'#666',letterSpacing:1,marginBottom:4,fontWeight:700}}>ACTIVE INPUTS</div>
+            {processing.inputs.map((inp,i)=>(
+              <div key={i} className="sp-row">
+                <span className="sp-label">{inp.src}</span>
+                <span className="sp-val" style={{fontSize:10,maxWidth:'55%',textAlign:'right'}}>{inp.val}</span>
+              </div>
+            ))}
+            <div style={{fontSize:9,color:'#666',letterSpacing:1,margin:'8px 0 4px',fontWeight:700}}>DECISIONS IN PROGRESS</div>
+            {processing.decisions.map((d,i)=>(
+              <div key={i} style={{fontSize:11,color:d.startsWith('ERROR')?'#cc3333':'#aaa',padding:'3px 0',
+                borderLeft:`2px solid ${d.startsWith('ERROR')?'#cc3333':accent}33`,paddingLeft:8,marginBottom:2,lineHeight:1.5}}>{d}</div>
+            ))}
+            <div style={{fontSize:9,color:'#666',letterSpacing:1,margin:'8px 0 4px',fontWeight:700}}>INTERMEDIATE OUTPUTS</div>
+            {processing.outputs.map((o,i)=>(
+              <div key={i} style={{fontSize:11,color:'#999',padding:'2px 0',lineHeight:1.5}}>→ {o}</div>
+            ))}
+          </div>}
+        </div>
+
+        {/* SECTION 4: DEPENDENCIES & CONNECTIONS */}
+        <div className="sp-section">
+          <div className="sp-section-hdr" onClick={()=>toggle('deps')}>
+            <span>Dependencies & Connections</span>
+            <span style={{fontSize:11,color:'#555'}}>{collapsed.deps?'▸':'▾'}</span>
+          </div>
+          {!collapsed.deps&&<div className="sp-section-body">
+            {upstream.length>0&&<>
+              <div style={{fontSize:9,color:'#666',letterSpacing:1,marginBottom:4,fontWeight:700}}>UPSTREAM (INPUTS FROM)</div>
+              {upstream.map((u,i)=>{
+                const ut=tierMap[u.gid]||'worker';
+                const uc=TIERS[ut].accent;
+                return(<div key={i} className="sp-dep">
+                  <div style={{width:6,height:6,borderRadius:3,background:uc,boxShadow:`0 0 4px ${uc}66`}}/>
+                  <span style={{color:'#bbb',fontSize:11}}>{u.label}</span>
+                  <span className="sp-dep-arrow">→</span>
+                  <span style={{color:accent,fontSize:11,fontWeight:600}}>{nd.label}</span>
+                </div>);
+              })}
+            </>}
+            {downstream.length>0&&<>
+              <div style={{fontSize:9,color:'#666',letterSpacing:1,margin:'8px 0 4px',fontWeight:700}}>DOWNSTREAM (OUTPUTS TO)</div>
+              {downstream.map((d,i)=>{
+                const dt=tierMap[d.gid]||'worker';
+                const dc=TIERS[dt].accent;
+                return(<div key={i} className="sp-dep">
+                  <span style={{color:accent,fontSize:11,fontWeight:600}}>{nd.label}</span>
+                  <span className="sp-dep-arrow">→</span>
+                  <div style={{width:6,height:6,borderRadius:3,background:dc,boxShadow:`0 0 4px ${dc}66`}}/>
+                  <span style={{color:'#bbb',fontSize:11}}>{d.label}</span>
+                </div>);
+              })}
+            </>}
+            {upstream.length===0&&downstream.length===0&&
+              <div style={{fontSize:11,color:'#555',padding:8}}>No active connections</div>}
+          </div>}
+        </div>
+
+        {/* SECTION 5: LOGS & EXECUTION HISTORY */}
+        <div className="sp-section">
+          <div className="sp-section-hdr" onClick={()=>toggle('logs')}>
+            <span>Logs & Execution History</span>
+            <span style={{fontSize:10,color:'#555'}}>{logs.length} entries {collapsed.logs?'▸':'▾'}</span>
+          </div>
+          {!collapsed.logs&&<div className={`sp-section-body ${sb}`} style={{maxHeight:220,overflow:'auto',overscrollBehavior:'contain'}}>
+            {logs.map((l,i)=>(
+              <div key={i} className={`sp-log ${l.isNew?'sp-log-new':''}`}>
+                <span className="sp-log-ts">{l.ts}</span>
+                <span className="sp-log-msg" style={{color:l.msg.includes('ERROR')||l.msg.includes('violation')?'#cc3333':'#aaa'}}>{l.msg}</span>
+              </div>
+            ))}
+          </div>}
+        </div>
+
+        {/* SECTION 6: PERFORMANCE METRICS */}
+        <div className="sp-section">
+          <div className="sp-section-hdr" onClick={()=>toggle('metrics')}>
+            <span>Performance Metrics</span>
+            <span style={{fontSize:11,color:'#555'}}>{collapsed.metrics?'▸':'▾'}</span>
+          </div>
+          {!collapsed.metrics&&<div className="sp-section-body">
+            {metrics.map((m,i)=>(
+              <div key={i} className="sp-metric">
+                <div className="sp-metric-top">
+                  <span className="sp-label">{m.label}</span>
+                  <span className="sp-val" style={{color:m.color}}>{m.value}</span>
+                </div>
+                <div className="sp-bar-track">
+                  <div className="sp-bar-fill" style={{width:`${clamp(m.bar,0,100)}%`,background:m.color}}/>
+                </div>
+              </div>
+            ))}
+          </div>}
+        </div>
+
+        {/* Bottom spacer */}
+        <div style={{height:20}}/>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════ MAIN APP ═══════════════════ */
+function App(){
+  const[groups,setGroups]=useState(mkGroups);
+  const[nodes,setNodes]=useState(mkNodes);
+  const[wires,setWires]=useState(mkWires);
+  const[pan,setPan]=useState(()=>{
+    /* Center the graph on load — estimate viewport and graph bounds */
+    const vw=window.innerWidth,vh=window.innerHeight;
+    const gx=80,gy=60,gw=1760,gh=1560; /* approx graph bounds */
+    const z=0.5;
+    return{x:(vw-gw*z)/2-gx*z,y:(vh-gh*z)/2-gy*z+20};
+  });
+  const[zoom,setZoom]=useState(0.5);
+  const[selected,setSelected]=useState(null);
+  const[wiringFrom,setWiringFrom]=useState(null); /* {nid,side} or null */
+  const[wiringMouse,setWiringMouse]=useState(null);
+  const[wizard,setWizard]=useState(null); /* {gid} or null */
+  const[dyingWires,setDyingWires]=useState([]);
+  const[modal,setModal]=useState(null); /* {type,id,msg,onConfirm} */
+  const[panelNode,setPanelNode]=useState(null);
+  const[hoverNode,setHoverNode]=useState(null);
+
+  /* ── Page load animation: groups→nodes→wires ── */
+  const[loadPhase,setLoadPhase]=useState(0);
+  useEffect(()=>{
+    const t1=setTimeout(()=>setLoadPhase(1),50);   /* groups appear */
+    const t2=setTimeout(()=>setLoadPhase(2),400);   /* nodes cascade */
+    const t3=setTimeout(()=>setLoadPhase(3),1100);  /* wires fade */
+    const t4=setTimeout(()=>setLoadPhase(4),1800);  /* done — remove animation overhead */
+    return()=>{clearTimeout(t1);clearTimeout(t2);clearTimeout(t3);clearTimeout(t4)};
+  },[]);
+
+  /* Unified interaction ref — replaces dragRef, panRef, resRef */
+  const interRef=useRef(null);
+  const cRef=useRef(null);
+
+  const toCanvas=useCallback((cx,cy)=>({x:(cx-pan.x)/zoom,y:(cy-pan.y)/zoom}),[pan,zoom]);
+
+  /* ── zoom ── */
+  useEffect(()=>{
+    const el=cRef.current;if(!el)return;
+    const h=e=>{e.preventDefault();setZoom(z=>clamp(z+(e.deltaY>0?-0.06:0.06),0.1,2))};
+    el.addEventListener('wheel',h,{passive:false});
+    return()=>el.removeEventListener('wheel',h);
+  },[]);
+
+  /* ── cleanup dying wires ── */
+  useEffect(()=>{
+    if(!dyingWires.length)return;
+    const t=setTimeout(()=>setDyingWires([]),600);
+    return()=>clearTimeout(t);
+  },[dyingWires]);
+
+  /* ── connected set ── */
+  const connSet=useMemo(()=>{const s=new Set();wires.forEach(w=>{s.add(w[0]);s.add(w[1])});return s},[wires]);
+
+  /* ── wire data ── */
+  const wireData=useMemo(()=>wires.map((w,i)=>{
+    const sN=nodes.find(n=>n.id===w[0]),tN=nodes.find(n=>n.id===w[1]);
+    if(!sN||!tN)return null;
+    const cA=nCtr(sN,groups),cB=nCtr(tN,groups);
+    const[sA,sB]=bestSides(cA,cB);
+    const pA=pPos(sN,groups,sA),pB=pPos(tN,groups,sB);
+    const isErr=sN.status==='error';
+    const srcTier=tierMap[sN.gid]||'worker';
+    const accent=TIERS[srcTier].accent;
+    return{i,src:w[0],tgt:w[1],pA,pB,sA,sB,isErr,accent,
+      path:makeWirePath(pA.x,pA.y,pB.x,pB.y,sA,sB,nodes,groups,w[0],w[1])};
+  }).filter(Boolean),[wires,nodes,groups]);
+
+  /* ── adaptive zoom: simplified view below 0.4 ── */
+  const simplified=zoom<0.4;
+
+  /* ── MOUSE DOWN ── */
+  const DRAG_THRESHOLD=5;
+  const onMD=useCallback(e=>{
+    if(e.button!==0||modal||wizard)return;
+    const tag=e.target.tagName;
+    /* Buttons/options handle their own actions — let them through */
+    if(tag==='BUTTON'||tag==='OPTION')return;
+
+    /* PORT CLICK — wiring and drag-from-port disconnect */
+    const portEl=e.target.closest('[data-port]');
+    if(portEl){
+      const nid=portEl.getAttribute('data-nid');
+      const side=portEl.getAttribute('data-port');
+      if(wiringFrom){
+        /* Complete the wire */
+        if(wiringFrom.nid!==nid){
+          /* If we were dragging an existing wire, it's already been removed — add the new one */
+          setWires(w=>[...w,[wiringFrom.nid,nid]]);
+        }
+        setWiringFrom(null);setWiringMouse(null);
+      }else{
+        /* Check for existing wire on this port+side for drag-from-port disconnect */
+        const existingIdx=wires.findIndex(w=>{
+          if(side==='right'||side==='bottom')return w[0]===nid;
+          return w[1]===nid;
+        });
+        if(existingIdx>=0){
+          /* Detach existing wire and start re-wiring from the OTHER end */
+          const ew=wires[existingIdx];
+          const otherNid=ew[0]===nid?ew[1]:ew[0];
+          const otherNd=nodes.find(n=>n.id===otherNid);
+          /* Animate the old wire dying (red retract) */
+          const wd=wireData.find(w=>w.i===existingIdx);
+          if(wd)setDyingWires([{path:wd.path}]);
+          /* Remove the old wire */
+          setWires(ws=>ws.filter((_,i)=>i!==existingIdx));
+          /* Start new wiring from the other end */
+          if(otherNd){
+            const cA=nCtr(otherNd,groups);
+            const nd2=nodes.find(n=>n.id===nid);
+            const cB=nd2?nCtr(nd2,groups):{x:0,y:0};
+            const[sA]=bestSides(cA,cB);
+            setWiringFrom({nid:otherNid,side:sA,isDragDisconnect:true});
+            const pp=pPos(otherNd,groups,sA);
+            setWiringMouse(pp);
+          }
+        }else{
+          /* No existing wire — start fresh wiring */
+          setWiringFrom({nid,side});
+          const nd=nodes.find(n=>n.id===nid);
+          if(nd){const pp=pPos(nd,groups,side);setWiringMouse(pp)}
+        }
+      }
+      e.stopPropagation();return;
+    }
+
+    /* NODE CLICK — entire node uses pending→drag threshold */
+    const nodeEl=e.target.closest('[data-node]');
+    if(nodeEl){
+      const nid=nodeEl.getAttribute('data-node');
+      const nd=nodes.find(n=>n.id===nid);if(!nd)return;
+      const g=groups.find(g=>g.id===nd.gid);if(!g)return;
+      if(wiringFrom){setWiringFrom(null);setWiringMouse(null)}
+      const absX=g.x+nd.x,absY=g.y+GH+2+nd.y;
+      const c=toCanvas(e.clientX,e.clientY);
+      const isFormEl=tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT';
+      setSelected(nid);
+      interRef.current={type:'pending_node',id:nid,
+        startX:e.clientX,startY:e.clientY,
+        ox:c.x-absX,oy:c.y-absY,isFormEl};
+      e.stopPropagation();return;
+    }
+
+    /* GROUP HEADER DRAG — also uses pending threshold */
+    const ghEl=e.target.closest('[data-gh]');
+    if(ghEl){
+      const gid=ghEl.getAttribute('data-gh');
+      const g=groups.find(g=>g.id===gid);if(!g)return;
+      const c=toCanvas(e.clientX,e.clientY);
+      interRef.current={type:'pending_group',id:gid,
+        startX:e.clientX,startY:e.clientY,
+        ox:c.x-g.x,oy:c.y-g.y};
+      e.stopPropagation();return;
+    }
+
+    /* Cancel wiring on empty canvas click */
+    if(wiringFrom){setWiringFrom(null);setWiringMouse(null);return}
+
+    /* PAN — clear selection and sidebar */
+    interRef.current={type:'panning',sx:e.clientX-pan.x,sy:e.clientY-pan.y};
+    setSelected(null);
+    setPanelNode(null);
+  },[nodes,groups,pan,zoom,wiringFrom,wires,modal,wizard,toCanvas]);
+
+  /* ── MOUSE MOVE ── */
+  const onMM=useCallback(e=>{
+    /* Wiring mouse tracking — follows cursor from port */
+    if(wiringFrom){
+      const c=toCanvas(e.clientX,e.clientY);
+      setWiringMouse(c);
+      /* Don't return — allow interaction ref processing too if needed */
+      if(!interRef.current)return;
+    }
+
+    const ir=interRef.current;
+    if(!ir)return;
+
+    switch(ir.type){
+      case 'panning':
+        setPan({x:e.clientX-ir.sx,y:e.clientY-ir.sy});
+        break;
+
+      case 'pending_node':{
+        const dx=e.clientX-ir.startX,dy=e.clientY-ir.startY;
+        if(!ir.isFormEl&&Math.sqrt(dx*dx+dy*dy)>DRAG_THRESHOLD){
+          ir.type='dragging_node';
+          /* Fall through to dragging_node */
+        }else break;
+      }
+      /* falls through */
+      case 'dragging_node':{
+        const c=toCanvas(e.clientX,e.clientY);
+        const{id,ox,oy}=ir;
+        setNodes(ns=>ns.map(n=>{
+          if(n.id!==id)return n;
+          const g=groups.find(g=>g.id===n.gid);if(!g)return n;
+          return{...n,x:c.x-ox-g.x,y:c.y-oy-g.y-GH-2};
+        }));
+        break;
+      }
+
+      case 'pending_group':{
+        const dx=e.clientX-ir.startX,dy=e.clientY-ir.startY;
+        if(Math.sqrt(dx*dx+dy*dy)>DRAG_THRESHOLD){
+          ir.type='dragging_group';
+          setSelected(null);setPanelNode(null);
+        }else break;
+      }
+      /* falls through */
+      case 'dragging_group':{
+        const c=toCanvas(e.clientX,e.clientY);
+        const{id,ox,oy}=ir;
+        setGroups(gs=>pushGroups(id,gs.map(g=>g.id===id?{...g,x:c.x-ox,y:c.y-oy}:g)));
+        break;
+      }
+
+      case 'resizing_group':{
+        const c=toCanvas(e.clientX,e.clientY);
+        const r=ir,dx=c.x-r.scx,dy=c.y-r.scy;
+        /* Content-aware minimum width: prevent nodes from overlapping.
+           Uses EP for edge padding, MIN_SPACING=20 for minimum inter-node gap. */
+        const MIN_SPACING=20;
+        const contentMinW=2*EP+r.cols*r.nodeW+(r.cols>1?(r.cols-1)*MIN_SPACING:0);
+        const contentMinH=2*EP+r.rows*r.nodeH+(r.rows>1?(r.rows-1)*MIN_SPACING:0)+GH;
+        const minW=Math.max(MIN_GW,contentMinW);
+        const minH=Math.max(MIN_GH,contentMinH);
+        let newX=r.x,newY=r.y,newW=r.w,newH=r.h;
+        if(r.hnd.includes('e'))newW=Math.max(minW,r.w+dx);
+        if(r.hnd.includes('s'))newH=Math.max(minH,r.h+dy);
+        if(r.hnd.includes('w')){newW=Math.max(minW,r.w-dx);newX=r.x+(r.w-newW)}
+        if(r.hnd.includes('n')){newH=Math.max(minH,r.h-dy);newY=r.y+(r.h-newH)}
+        setGroups(gs=>pushGroups(r.id,gs.map(g=>g.id===r.id?{...g,x:newX,y:newY,w:newW,h:newH}:g)));
+        if(r.origNodes&&r.origNodes.length>0&&r.rows>0&&r.cols>0){
+          /* Even redistribution: distribute nodes evenly across available space.
+             Symmetric by design — result depends only on target dimensions, not drag side. */
+          const innerW=newW-EP*2, innerH=newH-GH-EP*2;
+          if(innerW>0&&innerH>0){
+            /* Compute even spacing for each row/column */
+            const colSpace=r.cols>1?(innerW-r.cols*r.nodeW)/(r.cols-1):Math.max(0,(innerW-r.nodeW)/2);
+            const rowSpace=r.rows>1?(innerH-r.rows*r.nodeH)/(r.rows-1):Math.max(0,(innerH-r.nodeH)/2);
+            setNodes(ns=>ns.map(n=>{
+              if(n.gid!==r.id)return n;
+              const slot=r.nodeSlots[n.id];
+              if(!slot)return n;
+              const newNodeX=r.cols>1?EP+slot.col*(r.nodeW+colSpace):EP+colSpace;
+              const newNodeY=r.rows>1?EP+slot.row*(r.nodeH+rowSpace):EP+rowSpace;
+              return{...n,
+                x:Math.max(10,Math.round(newNodeX)),
+                y:Math.max(10,Math.round(newNodeY))
+              };
+            }));
+          }
+        }
+        break;
+      }
+    }
+  },[toCanvas,groups,wiringFrom]);
+
+  /* ── MOUSE UP ── */
+  const onMU=useCallback(e=>{
+    const ir=interRef.current;
+    if(!ir){return}
+
+    switch(ir.type){
+      case 'pending_node':
+        /* Mouse released without moving past threshold = CLICK → open sidebar */
+        setSelected(ir.id);
+        setPanelNode(prev=>prev===ir.id?null:ir.id);
+        break;
+
+      case 'pending_group':
+        /* Click on group header without dragging — no action needed */
+        break;
+
+      case 'dragging_node':{
+        /* Node drag completion — check for cable splice */
+        const nid=ir.id;
+        const nd=nodes.find(n=>n.id===nid);
+        if(nd){
+          const c=nCtr(nd,groups);
+          for(let wi=0;wi<wireData.length;wi++){
+            const wd=wireData[wi];
+            if(wd.src===nid||wd.tgt===nid)continue;
+            if(pointNearBezier(c.x,c.y,wd.path,50)){
+              setWires(ws=>{
+                const newW=ws.filter((_,i)=>i!==wd.i);
+                newW.push([wd.src,nid],[nid,wd.tgt]);
+                return newW;
+              });
+              break;
+            }
+          }
+        }
+        break;
+      }
+
+      case 'dragging_group':
+      case 'resizing_group':
+      case 'panning':
+        break;
+    }
+
+    interRef.current=null;
+  },[nodes,groups,wireData]);
+
+  useEffect(()=>{
+    window.addEventListener('mousemove',onMM);
+    window.addEventListener('mouseup',onMU);
+    return()=>{window.removeEventListener('mousemove',onMM);window.removeEventListener('mouseup',onMU)};
+  },[onMM,onMU]);
+
+  /* ── Escape key: cancel wiring / close sidebar / close modal ── */
+  useEffect(()=>{
+    const onKey=e=>{
+      if(e.key==='Escape'){
+        if(wiringFrom){setWiringFrom(null);setWiringMouse(null)}
+        else if(wizard){setWizard(null)}
+        else if(modal){setModal(null)}
+        else if(panelNode){setPanelNode(null);setSelected(null)}
+      }
+    };
+    window.addEventListener('keydown',onKey);
+    return()=>window.removeEventListener('keydown',onKey);
+  },[wiringFrom,wizard,modal,panelNode]);
+
+  /* ── resize starters ── */
+  const startGResize=useCallback((e,gid,hnd)=>{
+    e.stopPropagation();e.preventDefault();
+    const g=groups.find(g=>g.id===gid);if(!g)return;
+    const c=toCanvas(e.clientX,e.clientY);
+    const origNodes=nodes.filter(n=>n.gid===gid).map(n=>({id:n.id,x:n.x,y:n.y,w:n.w,h:n.h}));
+    /* Detect grid: group nodes into rows by similar y, then columns by x order */
+    const rowThresh=30;
+    const yBuckets=[];
+    origNodes.forEach(n=>{
+      const bucket=yBuckets.find(b=>Math.abs(b.y-n.y)<rowThresh);
+      if(bucket)bucket.nodes.push(n);
+      else yBuckets.push({y:n.y,nodes:[n]});
+    });
+    yBuckets.sort((a,b)=>a.y-b.y);
+    yBuckets.forEach(b=>b.nodes.sort((a,b)=>a.x-b.x));
+    const rows=yBuckets.length;
+    const cols=Math.max(...yBuckets.map(b=>b.nodes.length),1);
+    const nodeW=origNodes.length>0?Math.max(...origNodes.map(n=>n.w)):NW;
+    const nodeH=origNodes.length>0?Math.max(...origNodes.map(n=>n.h)):NH;
+    /* Assign grid slot to each node */
+    const nodeSlots={};
+    yBuckets.forEach((bucket,row)=>{
+      bucket.nodes.forEach((n,col)=>{
+        nodeSlots[n.id]={row,col};
+      });
+    });
+    interRef.current={type:'resizing_group',id:gid,hnd,scx:c.x,scy:c.y,
+      x:g.x,y:g.y,w:g.w,h:g.h,origNodes,rows,cols,nodeW,nodeH,nodeSlots};
+  },[groups,nodes,toCanvas]);
+
+  const startNResize=useCallback((e,nid,hnd)=>{
+    e.stopPropagation();e.preventDefault();
+    const nd=nodes.find(n=>n.id===nid);if(!nd)return;
+    const c=toCanvas(e.clientX,e.clientY);
+    const r={type:'node',id:nid,hnd,scx:c.x,scy:c.y,x:nd.x,y:nd.y,w:nd.w,h:nd.h};
+    const mv=ev=>{
+      const cc=toCanvas(ev.clientX,ev.clientY);
+      const dx=cc.x-r.scx,dy=cc.y-r.scy;
+      setNodes(ns=>ns.map(n=>{
+        if(n.id!==r.id)return n;
+        let{x,y,w,h}=r;
+        if(hnd.includes('e'))w=Math.max(MIN_NW,r.w+dx);
+        if(hnd.includes('s'))h=Math.max(MIN_NH,r.h+dy);
+        if(hnd.includes('w')){const nw=Math.max(MIN_NW,r.w-dx);x=r.x+(r.w-nw);w=nw}
+        if(hnd.includes('n')){const nh=Math.max(MIN_NH,r.h-dy);y=r.y+(r.h-nh);h=nh}
+        return{...n,x,y,w,h};
+      }));
+    };
+    const up=()=>{window.removeEventListener('mousemove',mv);window.removeEventListener('mouseup',up)};
+    window.addEventListener('mousemove',mv);window.addEventListener('mouseup',up);
+  },[nodes,toCanvas]);
+
+  /* ── context menu: disconnect ── */
+  const onCtx=useCallback(e=>{
+    const portEl=e.target.closest('[data-port]');
+    if(portEl){
+      e.preventDefault();
+      const nid=portEl.getAttribute('data-nid');
+      /* Animate disconnection: move wires to dying, turn red */
+      const dying=wires.filter(w=>w[0]===nid||w[1]===nid).map(w=>{
+        const sN=nodes.find(n=>n.id===w[0]),tN=nodes.find(n=>n.id===w[1]);
+        if(!sN||!tN)return null;
+        const cA=nCtr(sN,groups),cB=nCtr(tN,groups);
+        const[sA,sB]=bestSides(cA,cB);
+        const pA=pPos(sN,groups,sA),pB=pPos(tN,groups,sB);
+        return{path:makeWirePath(pA.x,pA.y,pB.x,pB.y,sA,sB,nodes,groups,w[0],w[1])};
+      }).filter(Boolean);
+      setDyingWires(dying);
+      setWires(ws=>ws.filter(w=>w[0]!==nid&&w[1]!==nid));
+      return;
+    }
+    const wireEl=e.target.closest('[data-wire]');
+    if(wireEl){
+      e.preventDefault();
+      const idx=parseInt(wireEl.getAttribute('data-wire'));
+      const wd=wireData[idx];
+      if(wd)setDyingWires([{path:wd.path}]);
+      setWires(ws=>ws.filter((_,i)=>i!==idx));
+    }
+  },[wires,nodes,groups,wireData]);
+
+  /* ── node mutations with confirmation ── */
+  const updateNode=useCallback((id,patch)=>setNodes(ns=>ns.map(n=>n.id===id?{...n,...patch}:n)),[]);
+
+  const requestDelete=useCallback(id=>{
+    setModal({type:'delete',id,msg:'Are you sure you want to remove this node?',
+      onConfirm:()=>{
+        /* Animate outgoing wires dying */
+        const dying=wires.filter(w=>w[0]===id||w[1]===id).map(w=>{
+          const sN=nodes.find(n=>n.id===w[0]),tN=nodes.find(n=>n.id===w[1]);
+          if(!sN||!tN)return null;
+          const cA=nCtr(sN,groups),cB=nCtr(tN,groups);
+          const[sA,sB]=bestSides(cA,cB);
+          const pA=pPos(sN,groups,sA),pB=pPos(tN,groups,sB);
+          return{path:makeWirePath(pA.x,pA.y,pB.x,pB.y,sA,sB,nodes,groups,w[0],w[1])};
+        }).filter(Boolean);
+        setDyingWires(dying);
+        setNodes(ns=>ns.filter(n=>n.id!==id));
+        setWires(ws=>ws.filter(w=>w[0]!==id&&w[1]!==id));
+        if(selected===id)setSelected(null);
+        if(panelNode===id)setPanelNode(null);
+        setModal(null);
+      }});
+  },[wires,nodes,groups,selected,panelNode]);
+
+
+  const addNode=useCallback(gid=>{
+    setWizard({gid,step:0,name:'',tier:tierMap[gid]||'worker',model:'rules',prompt:'',constraints:''});
+  },[]);
+
+  const addGroup=useCallback(tier=>{
+    const id=tier+'-'+Date.now();
+    const label=tier.charAt(0).toUpperCase()+tier.slice(1);
+    const maxX=groups.reduce((mx,g)=>Math.max(mx,g.x+g.w),0);
+    setGroups(gs=>pushGroups(id,[...gs,{id,label,tier,x:maxX+60,y:100,w:420,h:320}]));
+    tierMap[id]=tier;
+  },[groups]);
+
+  const zoomIn=useCallback(()=>setZoom(z=>clamp(z+0.1,0.1,2)),[]);
+  const zoomOut=useCallback(()=>setZoom(z=>clamp(z-0.1,0.1,2)),[]);
+  const zoomReset=useCallback(()=>setZoom(0.5),[]);
+
+  /* ═══════════════════ RENDER ═══════════════════ */
+  return(
+    <div ref={cRef} style={{width:'100%',height:'100%',position:'relative',overflow:'hidden',
+      cursor:interRef.current&&interRef.current.type!=='pending_node'&&interRef.current.type!=='pending_group'?'grabbing':'grab'}}
+      onMouseDown={onMD} onContextMenu={onCtx}>
+
+      {/* TOOLBAR */}
+      <div style={{position:'absolute',top:0,left:0,right:0,height:56,zIndex:50,
+        background:'linear-gradient(to bottom,#1a1a1aee 60%,#1a1a1a00)',display:'flex',
+        alignItems:'center',justifyContent:'space-between',padding:'0 24px',pointerEvents:'none'}}>
+        <div style={{pointerEvents:'auto'}}>
+          <span style={{fontSize:17,fontWeight:700,color:'#e0e0e0',letterSpacing:1}}>DINERO v2</span>
+          <span style={{fontSize:16,color:'#666',marginLeft:8}}>— Node Architect</span>
+          <div style={{fontSize:11,color:'#555',marginTop:2}}>
+            Click node for details · Drag to move · Click port to wire · Right-click to disconnect · Esc to cancel
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center',pointerEvents:'auto'}}>
+          {['orchestrator','manager','worker','infra'].map(t=>(
+            <button key={t} onClick={()=>addGroup(t)} style={{
+              background:TIERS[t].headerBg,border:`1px solid ${TIERS[t].accent}44`,borderRadius:6,
+              color:TIERS[t].text,fontSize:11,padding:'6px 12px',cursor:'pointer',fontWeight:600,letterSpacing:0.5
+            }}>+ {t.charAt(0).toUpperCase()+t.slice(1)}</button>
+          ))}
+          <button onClick={()=>{
+            /* Pick group: selected node's group, or default to 'workers' */
+            const gid=selected&&nodes.find(n=>n.id===selected)?.gid||'workers';
+            addNode(gid);
+          }} style={{
+            background:'linear-gradient(135deg,#38d07a22,#4098d822)',
+            border:'1.5px solid #38d07a66',borderRadius:8,
+            color:'#e0e0e0',fontSize:13,padding:'8px 20px',cursor:'pointer',
+            fontWeight:700,letterSpacing:0.5,marginLeft:8,
+            boxShadow:'0 0 20px #38d07a22, 0 2px 8px rgba(0,0,0,0.3)',
+            transition:'all 0.15s ease',
+          }}
+          onMouseEnter={e=>{e.target.style.boxShadow='0 0 30px #38d07a44, 0 2px 12px rgba(0,0,0,0.4)';e.target.style.borderColor='#38d07a99'}}
+          onMouseLeave={e=>{e.target.style.boxShadow='0 0 20px #38d07a22, 0 2px 8px rgba(0,0,0,0.3)';e.target.style.borderColor='#38d07a66'}}
+          >+ Add Node</button>
+        </div>
+      </div>
+
+      {/* DOT GRID */}
+      <div style={{position:'absolute',inset:0,
+        backgroundImage:'radial-gradient(circle,#292929 1px,transparent 1px)',
+        backgroundSize:`${30*zoom}px ${30*zoom}px`,
+        backgroundPosition:`${pan.x%(30*zoom)}px ${pan.y%(30*zoom)}px`,
+        pointerEvents:'none',zIndex:0}}/>
+
+      {/* TRANSFORM CONTAINER */}
+      <div style={{position:'absolute',top:0,left:0,transformOrigin:'0 0',
+        transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`,pointerEvents:'none'}}>
+
+        {/* GROUPS */}
+        {groups.map(g=>{
+          const t=TIERS[g.tier]||TIERS.worker;
+          return(
+            <div key={g.id} style={{position:'absolute',left:g.x,top:g.y,width:g.w,height:g.h,zIndex:2,pointerEvents:'none',
+              opacity:loadPhase>=1?1:0,
+              animation:loadPhase>=1&&loadPhase<4?'groupFadeIn 0.4s ease-out forwards':'none'}}>
+              {/* Group body with clipped content */}
+              <div style={{position:'absolute',inset:0,background:'#1e1e1e',border:'1px solid #282828',
+                borderRadius:12,overflow:'hidden',pointerEvents:'auto'}}>
+                <div data-gh={g.id} style={{height:GH,background:t.headerBg,display:'flex',
+                  alignItems:'center',padding:'0 14px',cursor:'grab',userSelect:'none',borderRadius:'12px 12px 0 0'}}>
+                  <div style={{width:12,height:12,borderRadius:6,background:t.accent,
+                    boxShadow:`0 0 8px ${t.accent}88`,marginRight:10,flexShrink:0}}/>
+                  <span style={{fontSize:13,fontWeight:700,letterSpacing:2,color:t.text,textTransform:'uppercase',flex:1}}>
+                    {g.label}</span>
+                  <button onClick={e=>{e.stopPropagation();addNode(g.id)}} style={{
+                    background:'transparent',border:`1px solid ${t.accent}22`,borderRadius:4,
+                    color:t.text,fontSize:9,padding:'2px 6px',cursor:'pointer',fontWeight:500,
+                    opacity:0.4,transition:'opacity 0.15s'}}
+                    onMouseEnter={e=>e.target.style.opacity='0.8'}
+                    onMouseLeave={e=>e.target.style.opacity='0.4'}>+ Node</button>
+                </div>
+              </div>
+              {/* Resize handles — outside overflow:hidden, higher z so they sit above nodes */}
+              {resizeHandles(g.id,startGResize)}
+            </div>
+          );
+        })}
+
+        {/* NODES */}
+        {nodes.map((nd,ni)=>{
+          const g=groups.find(g=>g.id===nd.gid);if(!g)return null;
+          const tier=tierMap[nd.gid]||'worker';
+          const t=TIERS[tier];
+          const abs=nAbs(nd,groups);
+          const isErr=nd.status==='error';
+          const isSel=selected===nd.id;
+          const sb='sb-'+t.accent.replace('#','');
+          const mdl=MODELS.find(m=>m.id===nd.model)||MODELS[0];
+          const nodeDelay=ni*0.04; /* stagger each node by 40ms */
+          return(
+            <div key={nd.id} data-node={nd.id}
+              onMouseEnter={()=>setHoverNode(nd.id)}
+              onMouseLeave={()=>setHoverNode(h=>h===nd.id?null:h)}
+              style={{
+              position:'absolute',left:abs.x,top:abs.y,width:nd.w,height:nd.h,
+              background:isErr?'#1a1212':t.nodeBg,
+              border:isErr?'2.5px solid #cc3333':isSel?`2.5px solid ${t.accent}`:`1px solid ${hoverNode===nd.id?t.accent+'55':t.accent+'33'}`,
+              borderRadius:8,zIndex:isSel?18:12,pointerEvents:'auto',
+              display:'flex',flexDirection:'column',cursor:'pointer',
+              boxShadow:isErr?'0 0 30px #cc333344, inset 0 0 15px #cc333311':isSel?`0 0 30px ${t.accent}55, 0 0 8px ${t.accent}88`:hoverNode===nd.id?`0 0 12px ${t.accent}22`:'none',
+              animation:loadPhase<4?(loadPhase>=2?`nodeFadeIn 0.35s ease-out ${nodeDelay}s both`:'none'):isErr?'errorPulse 3s ease infinite':'none',
+              opacity:loadPhase<2?0:undefined,
+              userSelect:'none',overflow:'visible',
+              transition:'border 0.15s, box-shadow 0.15s',
+            }}>
+
+              {/* INNER CONTENT (clipped for border radius) */}
+              <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:7}}>
+                {/* HEADER — drag handle for moving */}
+                <div data-nheader="1" style={{height:42,background:isErr?'#2a1414':t.headerBg,display:'flex',
+                  alignItems:'center',padding:'0 10px',gap:6,
+                  borderBottom:`1px solid ${isErr?'#cc333344':t.accent+'22'}`,flexShrink:0}}>
+                  <div style={{width:9,height:9,borderRadius:5,flexShrink:0,
+                    background:isErr?'#cc3333':t.accent,
+                    boxShadow:`0 0 8px ${isErr?'#cc333388':t.accent+'88'}`}}/>
+                  <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:13,fontWeight:600,overflow:'hidden',
+                    textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
+                  {nd.auth&&<span style={{fontSize:8,fontWeight:700,background:'#d4a03033',
+                    color:'#d4a030',padding:'2px 5px',borderRadius:3,letterSpacing:1}}>AUTH</span>}
+                  {isErr&&<span style={{fontSize:8,fontWeight:700,background:'#cc333333',
+                    color:'#ff6666',padding:'2px 5px',borderRadius:3,letterSpacing:1}}>ERROR</span>}
+                  <button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
+                    onMouseDown={e=>e.stopPropagation()}
+                    style={{background:'transparent',border:'none',color:isErr?'#cc3333':t.accent,
+                      fontSize:13,cursor:'pointer',padding:'0 2px',lineHeight:1}}>{isErr?'⚠':'✓'}</button>
+                  <button onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
+                    onMouseDown={e=>e.stopPropagation()}
+                    style={{background:'transparent',border:'none',color:'#666',
+                      fontSize:13,cursor:'pointer',padding:'0 2px',lineHeight:1}}>✕</button>
+                </div>
+
+                {/* Body — click opens inspection panel */}
+                {!simplified&&<>
+                  {/* MODEL ROW */}
+                  <div style={{padding:'6px 10px',borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
+                    display:'flex',alignItems:'center',gap:8,flexShrink:0,cursor:'pointer'}}>
+                    <span style={{fontSize:9,fontWeight:700,color:'#666',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
+                    <select value={nd.model} onChange={e=>{e.stopPropagation();updateNode(nd.id,{model:e.target.value})}}
+                      onClick={e=>e.stopPropagation()}
+                      style={{flex:1,background:t.nodeBg,color:mdl.color,fontSize:12,
+                        padding:'3px 6px',borderRadius:4,border:`1px solid ${t.accent}22`,cursor:'pointer'}}>
+                      {MODELS.map(m=><option key={m.id} value={m.id}>{m.label} ({m.cost})</option>)}
+                    </select>
+                  </div>
+                  {/* BEHAVIOUR PROMPT — read-only display */}
+                  <div className={sb} style={{flex:1,padding:'6px 10px 8px',minHeight:0,overflow:'auto',
+                    overscrollBehavior:'contain'}}>
+                    <span style={{fontSize:9,fontWeight:700,color:'#666',letterSpacing:1.5,marginBottom:4,
+                      textTransform:'uppercase',display:'block',flexShrink:0}}>BEHAVIOUR PROMPT</span>
+                    <div style={{fontSize:11,lineHeight:1.5,color:isErr?'#cc9999':t.text+'cc',
+                      whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{nd.prompt}</div>
+                  </div>
+                </>}
+              </div>
+
+              {/* PORTS — rendered outside overflow:hidden wrapper */}
+              {['left','right','top','bottom'].map(side=>{
+                const connected=connSet.has(nd.id);
+                const isW=wiringFrom!==null;
+                const isTarget=isW&&wiringFrom.nid!==nd.id;
+                const col=isErr?'#cc3333':isW?t.accent:connected?'#aaa':'#555';
+                const glow=isErr?'#cc3333':t.accent;
+                return(
+                  <div key={side} data-port={side} data-nid={nd.id} style={{
+                    position:'absolute',
+                    left:side==='left'?-11:side==='right'?nd.w-11:nd.w/2-11,
+                    top:side==='top'?-11:side==='bottom'?nd.h-11:nd.h/2-11,
+                    width:22,height:22,borderRadius:11,cursor:'crosshair',zIndex:35,
+                    display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'auto',
+                  }}>
+                    <div style={{width:14,height:14,borderRadius:7,
+                      border:`1.5px solid ${col}`,
+                      background:isW?col+'33':connected?col+'22':'transparent',
+                      display:'flex',alignItems:'center',justifyContent:'center',
+                      boxShadow:connected||isW?`0 0 6px ${glow}44`:'none',
+                      animation:isTarget?'portPulse 1s ease infinite':'none',
+                    }}>
+                      <div style={{width:6,height:6,borderRadius:3,background:col}}/>
+                    </div>
+                  </div>
+                );
+              })}
+              {nodeResizeHandles(nd.id,nd.w,nd.h,startNResize)}
+            </div>
+          );
+        })}
+
+        {/* SVG WIRE LAYER */}
+        <svg style={{position:'absolute',left:0,top:0,width:1,height:1,
+          zIndex:5,pointerEvents:'none',overflow:'visible',
+          opacity:loadPhase>=3?1:0,
+          animation:loadPhase>=3&&loadPhase<4?'wireFadeIn 0.6s ease-out forwards':'none'}}>
+          <defs>
+            <marker id="arr" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+              <path d="M0,0 L6,2.5 L0,5" fill="#666" stroke="none"/></marker>
+            <marker id="arr-e" markerWidth="6" markerHeight="5" refX="6" refY="2.5" orient="auto">
+              <path d="M0,0 L6,2.5 L0,5" fill="#cc3333" stroke="none"/></marker>
+            <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/>
+              <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+
+          {/* DYING WIRES (retract animation) */}
+          {dyingWires.map((dw,i)=>(
+            <path key={'die-'+i} d={dw.path} fill="none" stroke="#cc3333" strokeWidth="2.5"
+              className="wire-dying" strokeLinecap="round" strokeDasharray="1000"/>
+          ))}
+
+          {/* ACTIVE WIRES — source-colored, sharp flow */}
+          {wireData.map(wd=>(
+            <g key={wd.i}>
+              {/* subtle shadow for depth */}
+              <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent} strokeWidth="3"
+                opacity={wd.isErr?0.04:0.06} pointerEvents="none"/>
+              {/* main cable — colored by SOURCE tier */}
+              <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent}
+                strokeWidth={wd.isErr?'2.2':'1.8'}
+                strokeDasharray={wd.isErr?'6 4':'none'} opacity={wd.isErr?0.7:0.5}
+                markerEnd={wd.isErr?'url(#arr-e)':'url(#arr)'}
+                data-wire={wd.i} style={{pointerEvents:'stroke',cursor:'pointer'}} strokeLinecap="round"/>
+              {/* flow particles — sharp, defined, no blur — not on error wires */}
+              {!wd.isErr&&(
+                <path d={wd.path} fill="none" stroke={wd.accent} className="wire-flow"
+                  strokeWidth="2.5" strokeDasharray="3 14" opacity="0.85"
+                  strokeLinecap="round" pointerEvents="none"/>
+              )}
+            </g>
+          ))}
+
+          {/* TEMPORARY WIRE — anchored to exact port position */}
+          {wiringFrom&&wiringMouse&&(()=>{
+            const srcN=nodes.find(n=>n.id===wiringFrom.nid);
+            if(!srcN)return null;
+            const pp=pPos(srcN,groups,wiringFrom.side);
+            const srcTier=tierMap[srcN.gid]||'worker';
+            const accent=wiringFrom.isDragDisconnect?'#cc3333':TIERS[srcTier].accent;
+            const dx=wiringMouse.x-pp.x,dy=wiringMouse.y-pp.y;
+            const cp=Math.max(60,Math.sqrt(dx*dx+dy*dy)*0.4);
+            let cx1=pp.x,cy1=pp.y;
+            if(wiringFrom.side==='right')cx1+=cp;else if(wiringFrom.side==='left')cx1-=cp;
+            if(wiringFrom.side==='bottom')cy1+=cp;else if(wiringFrom.side==='top')cy1-=cp;
+            const path=`M${pp.x},${pp.y} C${cx1},${cy1} ${wiringMouse.x},${wiringMouse.y} ${wiringMouse.x},${wiringMouse.y}`;
+            return(
+              <g>
+                <circle cx={pp.x} cy={pp.y} r="5" fill={accent} opacity="0.9"/>
+                <path d={path} fill="none" stroke={accent} strokeWidth="2" opacity="0.7"
+                  strokeLinecap="round" strokeDasharray={wiringFrom.isDragDisconnect?'6 4':'none'}/>
+                <circle cx={wiringMouse.x} cy={wiringMouse.y} r="4" fill={accent} opacity="0.6"
+                  stroke={accent} strokeWidth="1" strokeOpacity="0.3"/>
+              </g>
+            );
+          })()}
+        </svg>
+      </div>
+
+      {/* ZOOM CONTROLS */}
+      <div style={{position:'absolute',bottom:20,left:20,display:'flex',flexDirection:'column',
+        gap:4,zIndex:50,pointerEvents:'auto'}}>
+        {[{l:'+',f:zoomIn},{l:`${Math.round(zoom*100)}%`,f:null},{l:'−',f:zoomOut},{l:'⟳',f:zoomReset}].map((b,i)=>(
+          <button key={i} onClick={b.f} style={{
+            width:40,height:b.l.length>2?28:32,background:'#252525',border:'1px solid #333',
+            borderRadius:6,color:'#aaa',fontSize:b.l.length>2?10:16,cursor:b.f?'pointer':'default',
+            display:'flex',alignItems:'center',justifyContent:'center',fontWeight:600
+          }}>{b.l}</button>
+        ))}
+      </div>
+
+      {/* WIRING STATUS BAR */}
+      {wiringFrom&&(()=>{
+        const nd=nodes.find(n=>n.id===wiringFrom.nid);
+        return(
+          <div style={{position:'absolute',bottom:0,left:0,right:0,height:36,zIndex:50,
+            background:'#252525ee',display:'flex',alignItems:'center',justifyContent:'center',
+            borderTop:'1px solid #333',fontSize:12,color:'#78c0f0'}}>
+            Wiring from <strong style={{margin:'0 5px'}}>{nd?.label||wiringFrom.nid}</strong> — click a target port to connect
+          </div>
+        );
+      })()}
+
+      {/* SIDE PANEL — Live inspection layer */}
+      {panelNode&&(()=>{
+        const nd=nodes.find(n=>n.id===panelNode);
+        if(!nd)return null;
+        const tier=tierMap[nd.gid]||'worker';
+        const t=TIERS[tier];
+        const isErr=nd.status==='error';
+        return <LivePanel nd={nd} tier={tier} t={t} isErr={isErr}
+          wires={wires} nodes={nodes} groups={groups} updateNode={updateNode}
+          onClose={()=>{setPanelNode(null);setSelected(null)}}/>;
+      })()}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {modal&&(
+        <div className="modal-overlay" onClick={()=>setModal(null)}>
+          <div className="modal-box" onClick={e=>e.stopPropagation()}>
+            <h3>Confirm Deletion</h3>
+            <p>{modal.msg}</p>
+            <div className="btn-row">
+              <button onClick={()=>setModal(null)}>Cancel</button>
+              <button className="danger" onClick={modal.onConfirm}>Remove Node</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* NODE CREATION WIZARD */}
+      {wizard&&(()=>{
+        const w=wizard;
+        const tier=w.tier||'worker';
+        const t=TIERS[tier];
+        const canCreate=w.name.trim()&&w.prompt.trim();
+        const TIER_DESC={orchestrator:'Top-level coordinator',manager:'Domain manager',worker:'Task executor',infra:'Infrastructure service'};
+        const wizUpdate=patch=>setWizard(wz=>({...wz,...patch}));
+        const doCreate=()=>{
+          if(!canCreate)return;
+          const id=newId();
+          const gid=w.gid;
+          /* If tier changed from group's tier, find/create matching group */
+          let targetGid=gid;
+          const gTier=tierMap[gid];
+          if(gTier!==tier){
+            const existing=groups.find(g=>tierMap[g.id]===tier);
+            if(existing)targetGid=existing.id;
+            else{
+              targetGid=tier+'-'+Date.now();
+              const maxX=groups.reduce((mx,g)=>Math.max(mx,g.x+g.w),0);
+              setGroups(gs=>pushGroups(targetGid,[...gs,{id:targetGid,label:tier.charAt(0).toUpperCase()+tier.slice(1),tier,x:maxX+60,y:100,w:420,h:320}]));
+              tierMap[targetGid]=tier;
+            }
+          }
+          const prompt=w.constraints?w.prompt.trim()+'\n\nConstraints: '+w.constraints.trim():w.prompt.trim();
+          setNodes(ns=>[...ns,{id,gid:targetGid,label:w.name.trim(),x:30,y:30,w:NW,h:NH,model:w.model,status:'ok',auth:false,prompt}]);
+          setWizard(null);
+          setSelected(id);
+          setPanelNode(id);
+        };
+        return(
+          <div className="wiz-overlay" onClick={()=>setWizard(null)}>
+            <div className="wiz-box" onClick={e=>e.stopPropagation()}>
+              <div className="wiz-hdr">
+                <div style={{width:10,height:10,borderRadius:5,background:t.accent,boxShadow:`0 0 8px ${t.accent}66`}}/>
+                <h3>Create New Node</h3>
+                <button onClick={()=>setWizard(null)} style={{background:'none',border:'none',color:'#666',fontSize:16,cursor:'pointer',padding:0}}>✕</button>
+              </div>
+              <div className="wiz-body">
+                {/* NAME */}
+                <div className="wiz-field">
+                  <label>Node Name</label>
+                  <input autoFocus value={w.name} onChange={e=>wizUpdate({name:e.target.value})}
+                    placeholder="e.g. Sentiment analyzer" spellCheck="false"/>
+                </div>
+
+                {/* ROLE / TIER */}
+                <div className="wiz-field">
+                  <label>Role</label>
+                  <div className="wiz-tier-grid">
+                    {Object.keys(TIERS).map(tk=>{
+                      const tt=TIERS[tk];
+                      const sel=tier===tk;
+                      return(
+                        <div key={tk} className="wiz-tier-btn" onClick={()=>wizUpdate({tier:tk})}
+                          style={{background:tt.nodeBg,borderColor:sel?tt.accent:'transparent'}}>
+                          <span className="wiz-tier-name" style={{color:tt.text}}>{tk.charAt(0).toUpperCase()+tk.slice(1)}</span>
+                          <span className="wiz-tier-desc" style={{color:tt.text}}>{TIER_DESC[tk]}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* MODEL */}
+                <div className="wiz-field">
+                  <label>Model</label>
+                  <div className="wiz-model-grid">
+                    {MODELS.map(m=>{
+                      const sel=w.model===m.id;
+                      return(
+                        <div key={m.id} className="wiz-model-btn" onClick={()=>wizUpdate({model:m.id})}
+                          style={{borderColor:sel?m.color:'transparent'}}>
+                          <span className="wiz-m-name" style={{color:sel?m.color:'#aaa'}}>{m.label}</span>
+                          <span className="wiz-m-cost">{m.cost}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* BEHAVIOUR PROMPT */}
+                <div className="wiz-field">
+                  <label>Behaviour Prompt</label>
+                  <textarea value={w.prompt} onChange={e=>wizUpdate({prompt:e.target.value})}
+                    placeholder="Define what this node does, how it processes inputs, and what it outputs..."
+                    spellCheck="false"/>
+                </div>
+
+                {/* CONSTRAINTS */}
+                <div className="wiz-field">
+                  <label>Constraints (optional)</label>
+                  <textarea value={w.constraints} onChange={e=>wizUpdate({constraints:e.target.value})}
+                    placeholder="e.g. Max 5% per trade, no override, must log all decisions..."
+                    style={{minHeight:50}} spellCheck="false"/>
+                </div>
+              </div>
+              <div className="wiz-foot">
+                <button onClick={()=>setWizard(null)}>Cancel</button>
+                <button className="primary" disabled={!canCreate} onClick={doCreate}
+                  style={{color:canCreate?t.accent:'#666'}}>Create Node</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+/* ── RESIZE HANDLES ── */
+function resizeHandles(id,onStart){
+  const s=12;
+  return[
+    {k:'nw',s:{top:-3,left:-3,width:s,height:s,cursor:'nwse-resize'}},
+    {k:'ne',s:{top:-3,right:-3,width:s,height:s,cursor:'nesw-resize'}},
+    {k:'sw',s:{bottom:-3,left:-3,width:s,height:s,cursor:'nesw-resize'}},
+    {k:'se',s:{bottom:-3,right:-3,width:s,height:s,cursor:'nwse-resize'}},
+    {k:'n',s:{top:-3,left:s,right:s,height:s,cursor:'ns-resize'}},
+    {k:'s',s:{bottom:-3,left:s,right:s,height:s,cursor:'ns-resize'}},
+    {k:'w',s:{top:s,bottom:s,left:-3,width:s,cursor:'ew-resize'}},
+    {k:'e',s:{top:s,bottom:s,right:-3,width:s,cursor:'ew-resize'}},
+  ].map(h=><div key={h.k} onMouseDown={e=>onStart(e,id,h.k)}
+    style={{position:'absolute',...h.s,zIndex:20,pointerEvents:'auto'}}/>);
+}
+function nodeResizeHandles(id,w,h,onStart){
+  const s=8;
+  return[
+    {k:'nw',s:{top:0,left:0,width:s,height:s,cursor:'nwse-resize'}},
+    {k:'ne',s:{top:0,right:0,width:s,height:s,cursor:'nesw-resize'}},
+    {k:'sw',s:{bottom:0,left:0,width:s,height:s,cursor:'nesw-resize'}},
+    {k:'se',s:{bottom:0,right:0,width:s,height:s,cursor:'nwse-resize'}},
+    {k:'n',s:{top:0,left:s,right:s,height:s,cursor:'ns-resize'}},
+    {k:'s',s:{bottom:0,left:s,right:s,height:s,cursor:'ns-resize'}},
+    {k:'w',s:{top:s,bottom:s,left:0,width:s,cursor:'ew-resize'}},
+    {k:'e',s:{top:s,bottom:s,right:0,width:s,cursor:'ew-resize'}},
+  ].map(h=><div key={h.k} onMouseDown={e=>onStart(e,id,h.k)}
+    style={{position:'absolute',...h.s,zIndex:6,pointerEvents:'auto'}}/>);
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
