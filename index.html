@@ -114,12 +114,12 @@ const MODELS=[
   {id:'embeddings',label:'Embeddings',cost:'$',color:'#9860d8'},
   {id:'custom',label:'Custom',cost:'—',color:'#666'},
 ];
-const GH=44, GAP=40, MIN_GW=400, MIN_GH=200, MIN_NW=280, MIN_NH=120;
+const GH=44, GAP=40, MIN_GW=400, MIN_GH=200, MIN_NW=280, MIN_NH=160;
 const tierMap={orchestrator:'orchestrator',managers:'manager',workers:'worker',infra:'infra'};
 
 /* ═══════════════════ DEFAULT DATA ═══════════════════ */
 /* Responsive layout: sizes and positions adapt to viewport */
-const NW=380, NH=160, NS=40; /* default node width, height, spacing */
+const NW=380, NH=200, NS=40; /* default node width, height, spacing */
 const EP=50; /* edge padding inside groups — room for wire lanes */
 const NG=70; /* horizontal gap between nodes — routing clearance */
 /* ── Wire routing constants ── */
@@ -288,9 +288,9 @@ function computePortPositions(wires,nodes,groups,sideAssign){
     const sAbs=nAbs(sN,groups),tAbs=nAbs(tN,groups);
     const key=w.src+'\u2192'+w.tgt;
     const prev=sideAssign[key]||{};
-    const srcSide=bestSide(sAbs,sN.w,sN.h,tAbs,tN.w,tN.h,prev.srcSide);
-    const tgtSide=bestSide(tAbs,tN.w,tN.h,sAbs,sN.w,sN.h,prev.tgtSide);
-    sideAssign[key]={srcSide,tgtSide};
+    const srcSide=prev.srcLocked?prev.srcSide:bestSide(sAbs,sN.w,sN.h,tAbs,tN.w,tN.h,prev.srcSide);
+    const tgtSide=prev.tgtLocked?prev.tgtSide:bestSide(tAbs,tN.w,tN.h,sAbs,sN.w,sN.h,prev.tgtSide);
+    sideAssign[key]={srcSide,tgtSide,srcLocked:!!prev.srcLocked,tgtLocked:!!prev.tgtLocked};
     if(w.srcPort)portDynSide[w.srcPort]=srcSide;
     if(w.tgtPort)portDynSide[w.tgtPort]=tgtSide;
   });
@@ -937,7 +937,7 @@ function App(){
   /* Unified interaction ref — replaces dragRef, panRef, resRef */
   const interRef=useRef(null);
   const cRef=useRef(null);
-  const sideAssignRef=useRef({}); /* { 'src→tgt': {srcSide,tgtSide} } — stable side assignments */
+  const sideAssignRef=useRef({}); /* { 'src→tgt': {srcSide,tgtSide,srcLocked?,tgtLocked?} } */
 
   const toCanvas=useCallback((cx,cy)=>({x:(cx-pan.x)/zoom,y:(cy-pan.y)/zoom}),[pan,zoom]);
 
@@ -1049,6 +1049,8 @@ function App(){
         const otherPos=otherPP?{x:otherPP.x,y:otherPP.y}:null;
         const wd=wireData.find(w=>w.i===wireIdx);
         if(wd)setDyingWires([{path:wd.path}]);
+        /* Release side lock for the disconnected wire */
+        delete sideAssignRef.current[ew.src+'\u2192'+ew.tgt];
         setWires(ws=>ws.filter((_,i)=>i!==wireIdx));
         setWiringFrom({nid:otherNid,portId:otherPortId,side:otherSide,portPos:otherPos,isDragDisconnect:true});
         setWiringMouse(toCanvas(e.clientX,e.clientY));
@@ -1254,6 +1256,9 @@ function App(){
             (e.srcPort===tgtPortId&&e.tgtPort===srcPortId));
           if(dup)return w;
           const nw=[...w,{src:wiringFrom.nid,srcPort:srcPortId,tgt:tgtNid,tgtPort:tgtPortId}];
+          /* Lock user-chosen sides so bestSide won't override them */
+          const saKey=wiringFrom.nid+'\u2192'+tgtNid;
+          sideAssignRef.current[saKey]={srcSide:wiringFrom.side,tgtSide,srcLocked:true,tgtLocked:true};
           /* Auto-expand: ensure 1 spare port per side */
           if(autoExpandPorts(nodes,nw))setNodes([...nodes]);
           return nw;
@@ -1411,6 +1416,8 @@ function App(){
       /* Find wire attached to this port */
       const wireIdx=wires.findIndex(w=>w.srcPort===pid||w.tgtPort===pid);
       if(wireIdx>=0){
+        const ew=wires[wireIdx];
+        delete sideAssignRef.current[ew.src+'\u2192'+ew.tgt];
         const wd=wireData.find(w=>w.i===wireIdx);
         if(wd)setDyingWires([{path:wd.path}]);
         setWires(ws=>ws.filter((_,i)=>i!==wireIdx));
@@ -1421,6 +1428,8 @@ function App(){
     if(wireEl){
       e.preventDefault();
       const idx=parseInt(wireEl.getAttribute('data-wire'));
+      const ew=wires[idx];
+      if(ew)delete sideAssignRef.current[ew.src+'\u2192'+ew.tgt];
       const wd=wireData.find(w=>w.i===idx);
       if(wd)setDyingWires([{path:wd.path}]);
       setWires(ws=>ws.filter((_,i)=>i!==idx));
@@ -1572,7 +1581,7 @@ function App(){
               onMouseEnter={()=>setHoverNode(nd.id)}
               onMouseLeave={()=>setHoverNode(h=>h===nd.id?null:h)}
               style={{
-              position:'absolute',left:abs.x,top:abs.y,width:nd.w,height:nd.h,
+              position:'absolute',left:abs.x,top:abs.y,width:nd.w,minHeight:nd.h,
               background:isErr?'#1a1212':t.nodeBg,
               border:isErr?'2.5px solid #cc3333':isSel?`2.5px solid ${t.accent}`:`1px solid ${hoverNode===nd.id?t.accent+'55':t.accent+'33'}`,
               borderRadius:8,zIndex:isSel?18:12,pointerEvents:'auto',
@@ -1587,13 +1596,13 @@ function App(){
               {/* INNER CONTENT (clipped for border radius) */}
               <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:7}}>
                 {/* HEADER — drag handle for moving */}
-                <div data-nheader="1" style={{height:42,background:isErr?'#2a1414':t.headerBg,display:'flex',
-                  alignItems:'center',padding:'0 10px',gap:6,
+                <div data-nheader="1" style={{height:46,background:isErr?'#2a1414':t.headerBg,display:'flex',
+                  alignItems:'center',padding:'0 14px',gap:8,
                   borderBottom:`1px solid ${isErr?'#cc333344':t.accent+'22'}`,flexShrink:0}}>
                   <div style={{width:9,height:9,borderRadius:5,flexShrink:0,
                     background:isErr?'#cc3333':t.accent,
                     boxShadow:`0 0 8px ${isErr?'#cc333388':t.accent+'88'}`}}/>
-                  <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:13,fontWeight:600,overflow:'hidden',
+                  <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:14,fontWeight:600,overflow:'hidden',
                     textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
                   {nd.auth&&<span style={{fontSize:8,fontWeight:700,background:'#d4a03033',
                     color:'#d4a030',padding:'2px 5px',borderRadius:3,letterSpacing:1}}>AUTH</span>}
@@ -1612,22 +1621,22 @@ function App(){
                 {/* Body — click opens inspection panel */}
                 {!simplified&&<>
                   {/* MODEL ROW */}
-                  <div style={{padding:'6px 10px',borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
+                  <div style={{padding:'8px 14px',borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
                     display:'flex',alignItems:'center',gap:8,flexShrink:0,cursor:'pointer'}}>
-                    <span style={{fontSize:9,fontWeight:700,color:'#666',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
+                    <span style={{fontSize:10,fontWeight:700,color:'#666',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
                     <select value={nd.model} onChange={e=>{e.stopPropagation();updateNode(nd.id,{model:e.target.value})}}
                       onClick={e=>e.stopPropagation()}
                       style={{flex:1,background:t.nodeBg,color:mdl.color,fontSize:12,
-                        padding:'3px 6px',borderRadius:4,border:`1px solid ${t.accent}22`,cursor:'pointer'}}>
+                        padding:'4px 8px',borderRadius:4,border:`1px solid ${t.accent}22`,cursor:'pointer'}}>
                       {MODELS.map(m=><option key={m.id} value={m.id}>{m.label} ({m.cost})</option>)}
                     </select>
                   </div>
                   {/* BEHAVIOUR PROMPT — read-only display */}
-                  <div className={sb} style={{flex:1,padding:'6px 10px 8px',minHeight:0,overflow:'auto',
+                  <div className={sb} style={{flex:1,padding:'10px 14px 12px',minHeight:0,overflow:'auto',
                     overscrollBehavior:'contain'}}>
-                    <span style={{fontSize:9,fontWeight:700,color:'#666',letterSpacing:1.5,marginBottom:4,
+                    <span style={{fontSize:10,fontWeight:700,color:'#666',letterSpacing:1.5,marginBottom:6,
                       textTransform:'uppercase',display:'block',flexShrink:0}}>BEHAVIOUR PROMPT</span>
-                    <div style={{fontSize:11,lineHeight:1.5,color:isErr?'#cc9999':t.text+'cc',
+                    <div style={{fontSize:11.5,lineHeight:1.6,color:isErr?'#cc9999':t.text+'cc',
                       whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{nd.prompt}</div>
                   </div>
                 </>}
