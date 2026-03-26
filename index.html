@@ -210,10 +210,12 @@ function nAbs(n,gs){const g=gs.find(g=>g.id===n.gid);return g?{x:g.x+n.x,y:g.y+G
 function nCtr(n,gs){const a=nAbs(n,gs);return{x:a.x+n.w/2,y:a.y+n.h/2}}
 function pPos(n,gs,s){const a=nAbs(n,gs);return s==='left'?{x:a.x,y:a.y+n.h/2}:s==='right'?{x:a.x+n.w,y:a.y+n.h/2}:s==='top'?{x:a.x+n.w/2,y:a.y}:{x:a.x+n.w/2,y:a.y+n.h}}
 
-/* ── Multi-port system with direction-aware routing ──
-   Ports on all 4 sides: right/left for horizontal, bottom/top for vertical.
-   Direction chosen by relative position of source vs target node. */
+/* ── Standardised multi-port system ──
+   Every node always has ports on all 4 sides.
+   At least 1 free port per side at all times.
+   Ports evenly distributed along each edge. */
 const PORT_SEP=18; /* spacing between stacked ports on same side */
+const MAX_PORTS_PER_SIDE=8; /* soft cap — keeps things readable */
 
 /* Choose exit/entry sides based on relative node positions.
    Prefers vertical (bottom→top) for tier hierarchy, horizontal for same-tier. */
@@ -291,21 +293,19 @@ function computePortPositions(wires,nodes,groups){
   assignSlots(outBySide,true);
   assignSlots(inBySide,false);
 
-  /* Build flat output/input lists for port rendering */
-  const outputs={},inputs={};
+  /* Build per-node, per-side connected wire lists */
+  const connBySide={}; /* 'nodeId:side' → [wireIdx, ...] */
   wires.forEach((w,i)=>{
     if(!portMap[i])return;
-    if(!outputs[w[0]])outputs[w[0]]={};
-    const es=srcSides[i]||'right';
-    if(!outputs[w[0]][es])outputs[w[0]][es]=[];
-    outputs[w[0]][es].push(i);
-    if(!inputs[w[1]])inputs[w[1]]={};
-    const en=tgtSides[i]||'left';
-    if(!inputs[w[1]][en])inputs[w[1]][en]=[];
-    inputs[w[1]][en].push(i);
+    const sk=w[0]+':'+(srcSides[i]||'right');
+    if(!connBySide[sk])connBySide[sk]=[];
+    connBySide[sk].push({wi:i,type:'out'});
+    const tk=w[1]+':'+(tgtSides[i]||'left');
+    if(!connBySide[tk])connBySide[tk]=[];
+    connBySide[tk].push({wi:i,type:'in'});
   });
 
-  return{portMap,outputs,inputs};
+  return{portMap,connBySide};
 }
 
 /* ── Smooth bezier wire path with direction-aware control points ──
@@ -903,9 +903,8 @@ function App(){
   const connSet=useMemo(()=>{const s=new Set();wires.forEach(w=>{s.add(w[0]);s.add(w[1])});return s},[wires]);
 
   /* ── wire data with multi-port positions ── */
-  const{portMap,portOutputs,portInputs}=useMemo(()=>{
-    const{portMap,outputs,inputs}=computePortPositions(wires,nodes,groups);
-    return{portMap,portOutputs:outputs,portInputs:inputs};
+  const{portMap,connBySide}=useMemo(()=>{
+    return computePortPositions(wires,nodes,groups);
   },[wires,nodes,groups]);
 
   const wireData=useMemo(()=>wires.map((w,i)=>{
@@ -1485,76 +1484,62 @@ function App(){
                 </>}
               </div>
 
-              {/* PORTS — direction-aware, all 4 sides */}
+              {/* PORTS — standardised: all 4 sides, always at least 1 free per side */}
               {(()=>{
                 const isW=wiringFrom!==null;
                 const isTarget=isW&&wiringFrom.nid!==nd.id;
                 const glow=isErr?'#cc3333':t.accent;
                 const ports=[];
-                const portStyle=(side,offset,wi)=>{
-                  let left,top;
-                  if(side==='right'){left=nd.w-9;top=nd.h/2+offset-9}
-                  else if(side==='left'){left=-9;top=nd.h/2+offset-9}
-                  else if(side==='bottom'){left=nd.w/2+offset-9;top=nd.h-9}
-                  else{left=nd.w/2+offset-9;top=-9} /* top */
-                  return{position:'absolute',left,top,width:18,height:18,borderRadius:9,
-                    cursor:'crosshair',zIndex:35,display:'flex',alignItems:'center',
-                    justifyContent:'center',pointerEvents:'auto'};
-                };
-                const dot=(col)=>({width:10,height:10,borderRadius:5,
-                  border:`1.5px solid ${col}`,background:col+'22',
-                  display:'flex',alignItems:'center',justifyContent:'center',
-                  boxShadow:`0 0 5px ${glow}44`});
-                const innerDot=(col)=>({width:4,height:4,borderRadius:2,background:col});
+                const sides=['top','bottom','left','right'];
 
-                /* Connected output ports (grouped by side) */
-                const outBySide=portOutputs[nd.id]||{};
-                Object.keys(outBySide).forEach(side=>{
-                  const idxs=outBySide[side];
-                  const n=idxs.length;
-                  idxs.forEach((wi,pi)=>{
-                    const offset=(pi-(n-1)/2)*PORT_SEP;
-                    const col=isErr?'#cc3333':t.accent;
+                sides.forEach(side=>{
+                  const key=nd.id+':'+side;
+                  const conns=connBySide[key]||[]; /* connected wires on this side */
+                  const connCount=conns.length;
+                  /* Always at least 1 free port; grow up to soft max */
+                  const totalSlots=Math.min(Math.max(connCount+1,1),MAX_PORTS_PER_SIDE);
+                  const isVert=side==='left'||side==='right';
+                  const edgeLen=isVert?nd.h:nd.w;
+                  /* Even distribution along edge with padding */
+                  const pad=Math.min(20,edgeLen*0.15);
+                  const usable=edgeLen-pad*2;
+                  const gap=totalSlots>1?usable/(totalSlots-1):0;
+
+                  for(let si=0;si<totalSlots;si++){
+                    const conn=conns[si]; /* wire at this slot, or undefined (free) */
+                    const isConnected=!!conn;
+                    /* Position: evenly spaced along edge */
+                    const frac=totalSlots>1?(si/(totalSlots-1)):0.5;
+                    const along=pad+frac*usable;
+                    let left,top;
+                    if(side==='right'){left=nd.w-9;top=along-9}
+                    else if(side==='left'){left=-9;top=along-9}
+                    else if(side==='bottom'){left=along-9;top=nd.h-9}
+                    else{left=along-9;top=-9}
+
+                    const col=isConnected?(isErr?'#cc3333':t.accent)
+                      :(isW?t.accent:'#555');
+                    const bg=isConnected?col+'22':(isW?col+'33':'transparent');
+
                     ports.push(
-                      <div key={'o-'+wi} data-port={side} data-nid={nd.id} data-wire-idx={wi}
-                        style={portStyle(side,offset,wi)}>
-                        <div style={dot(col)}><div style={innerDot(col)}/></div>
-                      </div>);
-                  });
-                });
-
-                /* Connected input ports (grouped by side) */
-                const inBySide=portInputs[nd.id]||{};
-                Object.keys(inBySide).forEach(side=>{
-                  const idxs=inBySide[side];
-                  const n=idxs.length;
-                  idxs.forEach((wi,pi)=>{
-                    const offset=(pi-(n-1)/2)*PORT_SEP;
-                    const col=isErr?'#cc3333':t.accent;
-                    ports.push(
-                      <div key={'i-'+wi} data-port={side} data-nid={nd.id} data-wire-idx={wi}
-                        style={portStyle(side,offset,wi)}>
-                        <div style={dot(col)}><div style={innerDot(col)}/></div>
-                      </div>);
-                  });
-                });
-
-                /* Generic ports on all 4 sides — visible during wiring or when no connections */
-                const hasOut=Object.keys(outBySide).length>0;
-                const hasIn=Object.keys(inBySide).length>0;
-                const genSides=isW?['right','left','top','bottom']
-                  :(!hasOut&&!hasIn?['right','left']:
-                    (!hasOut?['right']:(!hasIn?['left']:[])));
-                genSides.forEach(side=>{
-                  const col=isW?t.accent:'#555';
-                  ports.push(
-                    <div key={'g-'+side} data-port={side} data-nid={nd.id}
-                      style={portStyle(side,0)}>
-                      <div style={{...dot(col),
-                        background:isW?col+'33':'transparent',
-                        animation:isTarget?'portPulse 1s ease infinite':'none',
-                      }}><div style={innerDot(col)}/></div>
-                    </div>);
+                      <div key={side+'-'+si}
+                        data-port={side} data-nid={nd.id}
+                        {...(isConnected?{'data-wire-idx':conn.wi}:{})}
+                        style={{position:'absolute',left,top,width:18,height:18,borderRadius:9,
+                          cursor:'crosshair',zIndex:35,display:'flex',alignItems:'center',
+                          justifyContent:'center',pointerEvents:'auto'}}>
+                        <div style={{width:10,height:10,borderRadius:5,
+                          border:`1.5px solid ${col}`,background:bg,
+                          display:'flex',alignItems:'center',justifyContent:'center',
+                          boxShadow:isConnected?`0 0 5px ${glow}44`:'none',
+                          animation:(!isConnected&&isTarget)?'portPulse 1s ease infinite':'none',
+                          transition:'opacity 0.15s',
+                        }}>
+                          <div style={{width:4,height:4,borderRadius:2,background:col}}/>
+                        </div>
+                      </div>
+                    );
+                  }
                 });
                 return ports;
               })()}
