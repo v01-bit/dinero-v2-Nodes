@@ -118,25 +118,51 @@ const GH=44, GAP=40, MIN_GW=400, MIN_GH=200, MIN_NW=280, MIN_NH=120;
 const tierMap={orchestrator:'orchestrator',managers:'manager',workers:'worker',infra:'infra'};
 
 /* ═══════════════════ DEFAULT DATA ═══════════════════ */
-/* Widescreen layout: wider nodes (380x160), generous spacing, centered on canvas */
+/* Responsive layout: sizes and positions adapt to viewport */
 const NW=380, NH=160, NS=40; /* default node width, height, spacing */
 const EP=40; /* edge padding inside groups */
 const NG=40; /* horizontal gap between nodes */
 const VG=50; /* vertical gap between node rows */
-/* Computed positions for evenly-spaced 4-column layout */
+/* Computed positions for evenly-spaced column layout within groups */
 const C0=EP, C1=EP+NW+NG, C2=EP+2*(NW+NG), C3=EP+3*(NW+NG); /* col x positions */
 const R0=EP, R1=EP+NH+VG; /* row y positions */
-const GW4=EP+4*NW+3*NG+EP; /* group width for 4 cols: 1760 */
+const GW4=EP+4*NW+3*NG+EP; /* group width for 4 cols: 1720 */
 const GW2=EP+2*NW+1*NG+EP; /* group width for 2 cols: 880 */
 const GW1=EP+NW+EP; /* group width for 1 col: 460 */
 const GH1=EP+NH+EP+GH; /* group height for 1 row + header: 284 */
 const GH2=EP+2*NH+VG+EP+GH; /* group height for 2 rows + header: 494 */
-function mkGroups(){return[
-  {id:'orchestrator',label:'Orchestrator',tier:'orchestrator',x:690,y:60,w:GW1,h:GH1},
-  {id:'managers',label:'Managers',tier:'manager',x:80,y:410,w:GW4,h:GH1},
-  {id:'workers',label:'Workers',tier:'worker',x:80,y:760,w:GW4,h:GH2},
-  {id:'infra',label:'Infrastructure',tier:'infra',x:480,y:1320,w:GW2,h:GH1},
-]}
+
+/* ── Responsive fit-to-canvas layout ── */
+function mkGroups(){
+  const vw=window.innerWidth, vh=window.innerHeight;
+  /* Canvas margin: percentage-based so it scales with screen */
+  const MARGIN_X=Math.max(60,vw*0.04);
+  const MARGIN_Y=Math.max(60,vh*0.05);
+  /* Available canvas area (in canvas coords, at zoom=1) */
+  const availW=vw-MARGIN_X*2;
+  const availH=vh-MARGIN_Y*2;
+  /* Tier vertical spacing: distribute 4 tiers across available height */
+  const tierHeights=[GH1, GH1, GH2, GH1]; /* orchestrator, managers, workers, infra */
+  const totalGroupH=tierHeights.reduce((s,h)=>s+h,0);
+  const vertSlack=availH-totalGroupH;
+  const TIER_GAP=Math.max(GAP, vertSlack/3); /* 3 gaps between 4 tiers */
+  /* Compute y positions for each tier row */
+  const y0=MARGIN_Y;
+  const y1=y0+GH1+TIER_GAP;
+  const y2=y1+GH1+TIER_GAP;
+  const y3=y2+GH2+TIER_GAP;
+  /* Horizontal positioning: center narrower groups, use full width for wide ones */
+  const orchX=MARGIN_X+Math.max(0,(availW-GW1)/2);
+  const mgrX=MARGIN_X+Math.max(0,(availW-GW4)/2);
+  const wrkX=MARGIN_X+Math.max(0,(availW-GW4)/2);
+  const infraX=MARGIN_X+Math.max(0,(availW-GW2)/2);
+  return[
+    {id:'orchestrator',label:'Orchestrator',tier:'orchestrator',x:orchX,y:y0,w:GW1,h:GH1},
+    {id:'managers',label:'Managers',tier:'manager',x:mgrX,y:y1,w:GW4,h:GH1},
+    {id:'workers',label:'Workers',tier:'worker',x:wrkX,y:y2,w:GW4,h:GH2},
+    {id:'infra',label:'Infrastructure',tier:'infra',x:infraX,y:y3,w:GW2,h:GH1},
+  ];
+}
 function mkNodes(){return[
   {id:'din-core',gid:'orchestrator',label:'DIN-CORE',x:C0,y:R0,w:NW,h:NH,model:'premium',status:'ok',auth:false,
    prompt:'You are DIN-CORE. Maintain the unified world model. Coordinate all managers. Resolve inter-domain conflicts. Set system posture from regime. Your decisions bind all downstream nodes.'},
@@ -746,13 +772,21 @@ function App(){
   const[nodes,setNodes]=useState(mkNodes);
   const[wires,setWires]=useState(mkWires);
   const[pan,setPan]=useState(()=>{
-    /* Center the graph on load — estimate viewport and graph bounds */
+    /* Fit-to-canvas: compute zoom and pan from actual graph bounds */
     const vw=window.innerWidth,vh=window.innerHeight;
-    const gx=80,gy=60,gw=1760,gh=1560; /* approx graph bounds */
-    const z=0.5;
-    return{x:(vw-gw*z)/2-gx*z,y:(vh-gh*z)/2-gy*z+20};
+    const gs=mkGroups();
+    const minX=Math.min(...gs.map(g=>g.x));
+    const minY=Math.min(...gs.map(g=>g.y));
+    const maxX=Math.max(...gs.map(g=>g.x+g.w));
+    const maxY=Math.max(...gs.map(g=>g.y+g.h));
+    const gw=maxX-minX, gh=maxY-minY;
+    const PAD=40; /* screen-space padding */
+    const zx=(vw-PAD*2)/gw, zy=(vh-PAD*2)/gh;
+    const z=clamp(Math.min(zx,zy),0.15,1.2);
+    window.__initZoom=z;
+    return{x:(vw-gw*z)/2-minX*z, y:(vh-gh*z)/2-minY*z};
   });
-  const[zoom,setZoom]=useState(0.5);
+  const[zoom,setZoom]=useState(()=>window.__initZoom||0.5);
   const[selected,setSelected]=useState(null);
   const[wiringFrom,setWiringFrom]=useState(null); /* {nid,side} or null */
   const[wiringMouse,setWiringMouse]=useState(null);
@@ -1189,7 +1223,19 @@ function App(){
 
   const zoomIn=useCallback(()=>setZoom(z=>clamp(z+0.1,0.1,2)),[]);
   const zoomOut=useCallback(()=>setZoom(z=>clamp(z-0.1,0.1,2)),[]);
-  const zoomReset=useCallback(()=>setZoom(0.5),[]);
+  const zoomReset=useCallback(()=>{
+    /* Fit-to-canvas reset */
+    const vw=window.innerWidth,vh=window.innerHeight;
+    const minX=Math.min(...groups.map(g=>g.x));
+    const minY=Math.min(...groups.map(g=>g.y));
+    const maxX=Math.max(...groups.map(g=>g.x+g.w));
+    const maxY=Math.max(...groups.map(g=>g.y+g.h));
+    const gw=maxX-minX,gh=maxY-minY;
+    const PAD=40;
+    const z=clamp(Math.min((vw-PAD*2)/gw,(vh-PAD*2)/gh),0.15,1.2);
+    setZoom(z);
+    setPan({x:(vw-gw*z)/2-minX*z,y:(vh-gh*z)/2-minY*z});
+  },[groups]);
 
   /* ═══════════════════ RENDER ═══════════════════ */
   return(
