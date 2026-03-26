@@ -210,71 +210,122 @@ function nAbs(n,gs){const g=gs.find(g=>g.id===n.gid);return g?{x:g.x+n.x,y:g.y+G
 function nCtr(n,gs){const a=nAbs(n,gs);return{x:a.x+n.w/2,y:a.y+n.h/2}}
 function pPos(n,gs,s){const a=nAbs(n,gs);return s==='left'?{x:a.x,y:a.y+n.h/2}:s==='right'?{x:a.x+n.w,y:a.y+n.h/2}:s==='top'?{x:a.x+n.w/2,y:a.y}:{x:a.x+n.w/2,y:a.y+n.h}}
 
-/* ── Multi-port system ──
-   Each node has multiple output ports (right side) and input ports (left side).
-   Ports are stacked vertically with even spacing. Each wire gets its own port. */
-const PORT_SEP=18; /* vertical spacing between stacked ports */
-const PORT_PAD=30; /* min padding from top/bottom of node to first/last port */
+/* ── Multi-port system with direction-aware routing ──
+   Ports on all 4 sides: right/left for horizontal, bottom/top for vertical.
+   Direction chosen by relative position of source vs target node. */
+const PORT_SEP=18; /* spacing between stacked ports on same side */
 
-/* Compute per-wire port positions: outputs on right, inputs on left, stacked vertically.
-   Returns portMap: { [wireIdx]: { src: {x,y}, tgt: {x,y} } } */
+/* Choose exit/entry sides based on relative node positions.
+   Prefers vertical (bottom→top) for tier hierarchy, horizontal for same-tier. */
+function chooseSides(srcAbs,srcW,srcH,tgtAbs,tgtW,tgtH){
+  const sx=srcAbs.x+srcW/2, sy=srcAbs.y+srcH/2;
+  const tx=tgtAbs.x+tgtW/2, ty=tgtAbs.y+tgtH/2;
+  const dx=tx-sx, dy=ty-sy;
+  const adx=Math.abs(dx), ady=Math.abs(dy);
+  /* Vertical preference: if target is clearly above or below */
+  if(ady>adx*0.4){
+    if(dy>0)return['bottom','top'];   /* target below → exit bottom, enter top */
+    return['top','bottom'];            /* target above → exit top, enter bottom */
+  }
+  /* Horizontal: target is beside */
+  if(dx>0)return['right','left'];
+  return['left','right'];
+}
+
+/* Get port position on a specific side at a given slot offset */
+function portAt(abs,w,h,side,offset){
+  if(side==='right') return{x:abs.x+w, y:abs.y+h/2+offset};
+  if(side==='left')  return{x:abs.x,   y:abs.y+h/2+offset};
+  if(side==='bottom')return{x:abs.x+w/2+offset, y:abs.y+h};
+  return                    {x:abs.x+w/2+offset, y:abs.y};   /* top */
+}
+
+/* Compute all wire port positions with direction-aware side selection.
+   Returns portMap, plus per-node port lists for rendering. */
 function computePortPositions(wires,nodes,groups){
-  /* Collect outputs per node (wires where node is source) and inputs (where node is target) */
-  const outputs={}; /* nodeId → [wireIdx, ...] */
-  const inputs={};
-  wires.forEach((w,i)=>{
-    if(!outputs[w[0]])outputs[w[0]]=[];
-    outputs[w[0]].push(i);
-    if(!inputs[w[1]])inputs[w[1]]=[];
-    inputs[w[1]].push(i);
-  });
-
   const portMap={};
-
-  /* For each node, stack its output ports on the right side */
-  Object.keys(outputs).forEach(nid=>{
-    const nd=nodes.find(n=>n.id===nid);if(!nd)return;
-    const a=nAbs(nd,groups);
-    const idxs=outputs[nid];
-    const n=idxs.length;
-    /* Centre the port stack vertically on the node */
-    const totalH=(n-1)*PORT_SEP;
-    const startY=a.y+nd.h/2-totalH/2;
-    idxs.forEach((wi,i)=>{
-      if(!portMap[wi])portMap[wi]={};
-      portMap[wi].src={x:a.x+nd.w, y:startY+i*PORT_SEP};
-    });
+  /* Phase 1: determine side for each wire endpoint */
+  const srcSides={}; /* wireIdx → exit side */
+  const tgtSides={}; /* wireIdx → entry side */
+  wires.forEach((w,i)=>{
+    const sN=nodes.find(n=>n.id===w[0]),tN=nodes.find(n=>n.id===w[1]);
+    if(!sN||!tN)return;
+    const sA=nAbs(sN,groups),tA=nAbs(tN,groups);
+    const[es,en]=chooseSides(sA,sN.w,sN.h,tA,tN.w,tN.h);
+    srcSides[i]=es;
+    tgtSides[i]=en;
   });
 
-  /* For each node, stack its input ports on the left side */
-  Object.keys(inputs).forEach(nid=>{
-    const nd=nodes.find(n=>n.id===nid);if(!nd)return;
-    const a=nAbs(nd,groups);
-    const idxs=inputs[nid];
-    const n=idxs.length;
-    const totalH=(n-1)*PORT_SEP;
-    const startY=a.y+nd.h/2-totalH/2;
-    idxs.forEach((wi,i)=>{
-      if(!portMap[wi])portMap[wi]={};
-      portMap[wi].tgt={x:a.x, y:startY+i*PORT_SEP};
+  /* Phase 2: group wires by (node, side) and assign slot offsets */
+  /* outputs: which wires exit from each (nodeId, side) */
+  const outBySide={}; /* 'nodeId:side' → [wireIdx, ...] */
+  const inBySide={};
+  wires.forEach((w,i)=>{
+    if(srcSides[i]===undefined)return;
+    const ok=w[0]+':'+srcSides[i];
+    if(!outBySide[ok])outBySide[ok]=[];
+    outBySide[ok].push(i);
+    const ik=w[1]+':'+tgtSides[i];
+    if(!inBySide[ik])inBySide[ik]=[];
+    inBySide[ik].push(i);
+  });
+
+  /* Phase 3: compute actual positions with stacked offsets */
+  const assignSlots=(groupMap,isSource)=>{
+    Object.keys(groupMap).forEach(key=>{
+      const[nid,side]=key.split(':');
+      const nd=nodes.find(n=>n.id===nid);if(!nd)return;
+      const abs=nAbs(nd,groups);
+      const idxs=groupMap[key];
+      const n=idxs.length;
+      const totalSpan=(n-1)*PORT_SEP;
+      idxs.forEach((wi,i)=>{
+        const offset=(i-(n-1)/2)*PORT_SEP;
+        const pos=portAt(abs,nd.w,nd.h,side,offset);
+        if(!portMap[wi])portMap[wi]={};
+        if(isSource){portMap[wi].src=pos;portMap[wi].srcSide=side}
+        else{portMap[wi].tgt=pos;portMap[wi].tgtSide=side}
+      });
     });
+  };
+  assignSlots(outBySide,true);
+  assignSlots(inBySide,false);
+
+  /* Build flat output/input lists for port rendering */
+  const outputs={},inputs={};
+  wires.forEach((w,i)=>{
+    if(!portMap[i])return;
+    if(!outputs[w[0]])outputs[w[0]]={};
+    const es=srcSides[i]||'right';
+    if(!outputs[w[0]][es])outputs[w[0]][es]=[];
+    outputs[w[0]][es].push(i);
+    if(!inputs[w[1]])inputs[w[1]]={};
+    const en=tgtSides[i]||'left';
+    if(!inputs[w[1]][en])inputs[w[1]][en]=[];
+    inputs[w[1]][en].push(i);
   });
 
   return{portMap,outputs,inputs};
 }
 
-/* ── Smooth bezier wire path ──
-   Controlled curves: exit horizontally right, enter horizontally left.
-   Control point distance scales with horizontal gap for consistent curvature. */
-function makeWirePath(x1,y1,x2,y2){
-  const dx=Math.abs(x2-x1);
-  const cp=clamp(dx*0.4,60,250); /* control point offset — gentle, consistent */
-  /* If target is to the left (backward wire), use a wider arc */
-  if(x2<x1+40){
-    const spread=Math.max(80,Math.abs(y2-y1)*0.3+60);
-    return`M${x1},${y1} C${x1+spread},${y1} ${x2-spread},${y2} ${x2},${y2}`;
-  }
-  return`M${x1},${y1} C${x1+cp},${y1} ${x2-cp},${y2} ${x2},${y2}`;
+/* ── Smooth bezier wire path with direction-aware control points ──
+   Control points extend in the exit/entry direction for clean curves.
+   A short "runway" straight segment before curving gives breathing room. */
+function makeWirePath(x1,y1,x2,y2,srcSide,tgtSide){
+  const dist=Math.sqrt((x2-x1)**2+(y2-y1)**2);
+  const cp=clamp(dist*0.35,50,220);
+  const RUN=12; /* runway: short straight exit before curve */
+  /* Control point directions based on port side */
+  let cx1=x1,cy1=y1,cx2=x2,cy2=y2;
+  if(srcSide==='right') {cx1=x1+cp;x1+=RUN}
+  else if(srcSide==='left'){cx1=x1-cp;x1-=RUN}
+  else if(srcSide==='bottom'){cy1=y1+cp;y1+=RUN}
+  else if(srcSide==='top'){cy1=y1-cp;y1-=RUN}
+  if(tgtSide==='left')  {cx2=x2-cp;x2-=RUN}
+  else if(tgtSide==='right'){cx2=x2+cp;x2+=RUN}
+  else if(tgtSide==='top') {cy2=y2-cp;y2-=RUN}
+  else if(tgtSide==='bottom'){cy2=y2+cp;y2+=RUN}
+  return`M${x1-RUN*(srcSide==='right'?1:srcSide==='left'?-1:0)},${y1-RUN*(srcSide==='bottom'?1:srcSide==='top'?-1:0)} L${x1},${y1} C${cx1},${cy1} ${cx2},${cy2} ${x2},${y2} L${x2+RUN*(tgtSide==='left'?-1:tgtSide==='right'?1:0)},${y2+RUN*(tgtSide==='top'?-1:tgtSide==='bottom'?1:0)}`;
 }
 
 function rectsOverlap(a,b,gap){return a.x<b.x+b.w+gap&&a.x+a.w+gap>b.x&&a.y<b.y+b.h+gap&&a.y+a.h+gap>b.y}
@@ -862,11 +913,12 @@ function App(){
     const ports=portMap[i];
     if(!ports||!ports.src||!ports.tgt)return null;
     const pA=ports.src, pB=ports.tgt;
+    const sA=ports.srcSide||'right', sB=ports.tgtSide||'left';
     const isErr=sN.status==='error';
     const srcTier=tierMap[sN.gid]||'worker';
     const accent=TIERS[srcTier].accent;
-    return{i,src:w[0],tgt:w[1],pA,pB,sA:'right',sB:'left',isErr,accent,
-      path:makeWirePath(pA.x,pA.y,pB.x,pB.y)};
+    return{i,src:w[0],tgt:w[1],pA,pB,sA,sB,isErr,accent,
+      path:makeWirePath(pA.x,pA.y,pB.x,pB.y,sA,sB)};
   }).filter(Boolean),[wires,nodes,groups,portMap]);
 
   /* ── adaptive zoom: simplified view below 0.4 ── */
@@ -904,9 +956,10 @@ function App(){
           if(wd)setDyingWires([{path:wd.path}]);
           /* Remove the old wire */
           setWires(ws=>ws.filter((_,i)=>i!==existingIdx));
-          /* Start re-wiring from the other end */
+          /* Start re-wiring from the other end — use the wire's actual side */
           if(otherNd){
-            const otherSide=ew[0]===nid?'left':'right'; /* reconnect from the other node's side */
+            const wd=wireData.find(w=>w.i===existingIdx);
+            const otherSide=ew[0]===nid?(wd?wd.sB:'left'):(wd?wd.sA:'right');
             setWiringFrom({nid:otherNid,side:otherSide,isDragDisconnect:true});
             const pp=pPos(otherNd,groups,otherSide);
             setWiringMouse(pp);
@@ -1410,96 +1463,77 @@ function App(){
                 </>}
               </div>
 
-              {/* PORTS — individual ports per connection, outputs on right, inputs on left */}
+              {/* PORTS — direction-aware, all 4 sides */}
               {(()=>{
                 const isW=wiringFrom!==null;
                 const isTarget=isW&&wiringFrom.nid!==nd.id;
                 const glow=isErr?'#cc3333':t.accent;
                 const ports=[];
-                /* Output ports (right side) — one per outgoing wire */
-                const outIdxs=portOutputs[nd.id]||[];
-                const outN=outIdxs.length;
-                const outTotalH=(outN-1)*PORT_SEP;
-                const outStartY=nd.h/2-outTotalH/2;
-                outIdxs.forEach((wi,pi)=>{
-                  const col=isErr?'#cc3333':t.accent;
-                  ports.push(
-                    <div key={'out-'+wi} data-port="right" data-nid={nd.id} data-wire-idx={wi} style={{
-                      position:'absolute',left:nd.w-11,top:outStartY+pi*PORT_SEP-11,
-                      width:22,height:22,borderRadius:11,cursor:'crosshair',zIndex:35,
-                      display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'auto',
-                    }}>
-                      <div style={{width:12,height:12,borderRadius:6,
-                        border:`1.5px solid ${col}`,background:col+'22',
-                        display:'flex',alignItems:'center',justifyContent:'center',
-                        boxShadow:`0 0 6px ${glow}44`,
-                      }}>
-                        <div style={{width:5,height:5,borderRadius:3,background:col}}/>
-                      </div>
-                    </div>
-                  );
+                const portStyle=(side,offset,wi)=>{
+                  let left,top;
+                  if(side==='right'){left=nd.w-9;top=nd.h/2+offset-9}
+                  else if(side==='left'){left=-9;top=nd.h/2+offset-9}
+                  else if(side==='bottom'){left=nd.w/2+offset-9;top=nd.h-9}
+                  else{left=nd.w/2+offset-9;top=-9} /* top */
+                  return{position:'absolute',left,top,width:18,height:18,borderRadius:9,
+                    cursor:'crosshair',zIndex:35,display:'flex',alignItems:'center',
+                    justifyContent:'center',pointerEvents:'auto'};
+                };
+                const dot=(col)=>({width:10,height:10,borderRadius:5,
+                  border:`1.5px solid ${col}`,background:col+'22',
+                  display:'flex',alignItems:'center',justifyContent:'center',
+                  boxShadow:`0 0 5px ${glow}44`});
+                const innerDot=(col)=>({width:4,height:4,borderRadius:2,background:col});
+
+                /* Connected output ports (grouped by side) */
+                const outBySide=portOutputs[nd.id]||{};
+                Object.keys(outBySide).forEach(side=>{
+                  const idxs=outBySide[side];
+                  const n=idxs.length;
+                  idxs.forEach((wi,pi)=>{
+                    const offset=(pi-(n-1)/2)*PORT_SEP;
+                    const col=isErr?'#cc3333':t.accent;
+                    ports.push(
+                      <div key={'o-'+wi} data-port={side} data-nid={nd.id} data-wire-idx={wi}
+                        style={portStyle(side,offset,wi)}>
+                        <div style={dot(col)}><div style={innerDot(col)}/></div>
+                      </div>);
+                  });
                 });
-                /* Input ports (left side) — one per incoming wire */
-                const inIdxs=portInputs[nd.id]||[];
-                const inN=inIdxs.length;
-                const inTotalH=(inN-1)*PORT_SEP;
-                const inStartY=nd.h/2-inTotalH/2;
-                inIdxs.forEach((wi,pi)=>{
-                  const col=isErr?'#cc3333':t.accent;
-                  ports.push(
-                    <div key={'in-'+wi} data-port="left" data-nid={nd.id} data-wire-idx={wi} style={{
-                      position:'absolute',left:-11,top:inStartY+pi*PORT_SEP-11,
-                      width:22,height:22,borderRadius:11,cursor:'crosshair',zIndex:35,
-                      display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'auto',
-                    }}>
-                      <div style={{width:12,height:12,borderRadius:6,
-                        border:`1.5px solid ${col}`,background:col+'22',
-                        display:'flex',alignItems:'center',justifyContent:'center',
-                        boxShadow:`0 0 6px ${glow}44`,
-                      }}>
-                        <div style={{width:5,height:5,borderRadius:3,background:col}}/>
-                      </div>
-                    </div>
-                  );
+
+                /* Connected input ports (grouped by side) */
+                const inBySide=portInputs[nd.id]||{};
+                Object.keys(inBySide).forEach(side=>{
+                  const idxs=inBySide[side];
+                  const n=idxs.length;
+                  idxs.forEach((wi,pi)=>{
+                    const offset=(pi-(n-1)/2)*PORT_SEP;
+                    const col=isErr?'#cc3333':t.accent;
+                    ports.push(
+                      <div key={'i-'+wi} data-port={side} data-nid={nd.id} data-wire-idx={wi}
+                        style={portStyle(side,offset,wi)}>
+                        <div style={dot(col)}><div style={innerDot(col)}/></div>
+                      </div>);
+                  });
                 });
-                /* Generic output port (right) — always visible for new connections */
-                const genOutCol=isW?t.accent:outN>0?'transparent':'#555';
-                if(outN===0||isW)ports.push(
-                  <div key="gen-out" data-port="right" data-nid={nd.id} style={{
-                    position:'absolute',left:nd.w-11,top:nd.h/2-11,
-                    width:22,height:22,borderRadius:11,cursor:'crosshair',zIndex:35,
-                    display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'auto',
-                  }}>
-                    <div style={{width:12,height:12,borderRadius:6,
-                      border:`1.5px solid ${genOutCol}`,
-                      background:isW?genOutCol+'33':'transparent',
-                      display:'flex',alignItems:'center',justifyContent:'center',
-                      boxShadow:isW?`0 0 6px ${glow}44`:'none',
-                      animation:isTarget?'portPulse 1s ease infinite':'none',
-                    }}>
-                      <div style={{width:5,height:5,borderRadius:3,background:genOutCol}}/>
-                    </div>
-                  </div>
-                );
-                /* Generic input port (left) — always visible for new connections */
-                const genInCol=isW?t.accent:inN>0?'transparent':'#555';
-                if(inN===0||isW)ports.push(
-                  <div key="gen-in" data-port="left" data-nid={nd.id} style={{
-                    position:'absolute',left:-11,top:nd.h/2-11,
-                    width:22,height:22,borderRadius:11,cursor:'crosshair',zIndex:35,
-                    display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'auto',
-                  }}>
-                    <div style={{width:12,height:12,borderRadius:6,
-                      border:`1.5px solid ${genInCol}`,
-                      background:isW?genInCol+'33':'transparent',
-                      display:'flex',alignItems:'center',justifyContent:'center',
-                      boxShadow:isW?`0 0 6px ${glow}44`:'none',
-                      animation:isTarget?'portPulse 1s ease infinite':'none',
-                    }}>
-                      <div style={{width:5,height:5,borderRadius:3,background:genInCol}}/>
-                    </div>
-                  </div>
-                );
+
+                /* Generic ports on all 4 sides — visible during wiring or when no connections */
+                const hasOut=Object.keys(outBySide).length>0;
+                const hasIn=Object.keys(inBySide).length>0;
+                const genSides=isW?['right','left','top','bottom']
+                  :(!hasOut&&!hasIn?['right','left']:
+                    (!hasOut?['right']:(!hasIn?['left']:[])));
+                genSides.forEach(side=>{
+                  const col=isW?t.accent:'#555';
+                  ports.push(
+                    <div key={'g-'+side} data-port={side} data-nid={nd.id}
+                      style={portStyle(side,0)}>
+                      <div style={{...dot(col),
+                        background:isW?col+'33':'transparent',
+                        animation:isTarget?'portPulse 1s ease infinite':'none',
+                      }}><div style={innerDot(col)}/></div>
+                    </div>);
+                });
                 return ports;
               })()}
               {nodeResizeHandles(nd.id,nd.w,nd.h,startNResize)}
@@ -1548,7 +1582,7 @@ function App(){
             </g>
           ))}
 
-          {/* TEMPORARY WIRE — smooth bezier preview while wiring */}
+          {/* TEMPORARY WIRE — direction-aware bezier preview while wiring */}
           {wiringFrom&&wiringMouse&&(()=>{
             const srcN=nodes.find(n=>n.id===wiringFrom.nid);
             if(!srcN)return null;
@@ -1556,13 +1590,13 @@ function App(){
             const srcTier=tierMap[srcN.gid]||'worker';
             const accent=wiringFrom.isDragDisconnect?'#cc3333':TIERS[srcTier].accent;
             const mx=wiringMouse.x,my=wiringMouse.y;
-            /* Smooth bezier preview: exits horizontally from port side */
-            const dx=Math.abs(mx-pp.x);
-            const cp=clamp(dx*0.4,60,200);
+            const dist=Math.sqrt((mx-pp.x)**2+(my-pp.y)**2);
+            const cp=clamp(dist*0.35,50,200);
             const s=wiringFrom.side;
-            const sx=s==='right'?pp.x+cp:s==='left'?pp.x-cp:pp.x;
-            const sy=s==='top'?pp.y-cp:s==='bottom'?pp.y+cp:pp.y;
-            const path=`M${pp.x},${pp.y} C${sx},${sy} ${mx},${my} ${mx},${my}`;
+            let cx1=pp.x,cy1=pp.y;
+            if(s==='right')cx1+=cp;else if(s==='left')cx1-=cp;
+            else if(s==='bottom')cy1+=cp;else if(s==='top')cy1-=cp;
+            const path=`M${pp.x},${pp.y} C${cx1},${cy1} ${mx},${my} ${mx},${my}`;
             return(
               <g>
                 <circle cx={pp.x} cy={pp.y} r="5" fill={accent} opacity="0.9"/>
