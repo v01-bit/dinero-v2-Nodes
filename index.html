@@ -33,7 +33,8 @@ input,textarea,select{outline:none;border:none;font-family:inherit}
 @keyframes dropZonePulse{0%,100%{opacity:0.5}50%{opacity:1}}
 .wire-dying{animation:wireRetract 0.5s ease-in forwards}
 @keyframes fadeIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
-.panel-enter{animation:fadeIn 0.2s ease-out}
+.panel-enter{animation:fadeIn 0.25s ease-out}
+.canvas-shift-wrapper{will-change:transform;transform:translateX(0);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1)}
 .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;z-index:200}
 .modal-box{background:#252525;border:1px solid #444;border-radius:12px;padding:28px 32px;min-width:340px;box-shadow:0 8px 40px rgba(0,0,0,0.5);transition:min-width 0.3s ease,max-height 0.3s ease;overflow:hidden}
 .modal-box h3{color:#e0e0e0;font-size:15px;margin-bottom:10px}
@@ -825,7 +826,7 @@ function processingFor(tier,nd,isErr){
 }
 
 /* ═══════════════════ CUSTOM MODEL DROPDOWN (portal-based) ═══════════════════ */
-function ModelDropdown({value,onChange,models,nodeBg,accent,color}){
+function ModelDropdown({value,onChange,models,nodeBg,accent,color,zoom=1}){
   const[open,setOpen]=useState(false);
   const ref=useRef(null);
   const[pos,setPos]=useState(null);
@@ -844,10 +845,12 @@ function ModelDropdown({value,onChange,models,nodeBg,accent,color}){
     return()=>document.removeEventListener('pointerdown',close,true);
   },[open]);
 
-  /* Reposition on scroll/resize while open */
+  /* Continuously reposition popup to track trigger (handles zoom/pan/scroll) */
   useEffect(()=>{
     if(!open||!ref.current)return;
-    const reposition=()=>{
+    let raf;
+    const track=()=>{
+      if(!ref.current){return}
       const r=ref.current.getBoundingClientRect();
       const menuH=300, menuW=r.width;
       const flipUp=r.bottom+menuH+4>window.innerHeight;
@@ -857,11 +860,10 @@ function ModelDropdown({value,onChange,models,nodeBg,accent,color}){
         left:flipLeft?r.right-menuW:r.left,
         width:r.width
       });
+      raf=requestAnimationFrame(track);
     };
-    reposition();
-    window.addEventListener('resize',reposition);
-    window.addEventListener('scroll',reposition,true);
-    return()=>{window.removeEventListener('resize',reposition);window.removeEventListener('scroll',reposition,true)};
+    raf=requestAnimationFrame(track);
+    return()=>cancelAnimationFrame(raf);
   },[open]);
 
   const doOpen=()=>{
@@ -879,29 +881,36 @@ function ModelDropdown({value,onChange,models,nodeBg,accent,color}){
         <span>{cur.label} ({cur.cost})</span>
         <span style={{fontSize:16,color:'#aaa',marginLeft:8}}>{open?'▴':'▾'}</span>
       </div>
-      {open&&pos&&ReactDOM.createPortal(
+      {open&&pos&&(()=>{
+        const s=Math.max(0.7,zoom); /* scale factor — clamp so items don't get too tiny */
+        const fs=Math.round(20*s);
+        const pad=Math.round(10*s);
+        const costFs=Math.round(16*s);
+        const dot=Math.round(8*s);
+        const gap=Math.round(8*s);
+        return ReactDOM.createPortal(
         <div id="node-model-dd" style={{position:'fixed',top:pos.top,left:pos.left,width:pos.width,
           background:'#1e1e1e',border:`1px solid ${accent}33`,borderRadius:5,
           boxShadow:'0 8px 32px rgba(0,0,0,0.6)',zIndex:9999,overflow:'hidden',
-          maxHeight:160,overflowY:'auto'}}>
+          maxHeight:Math.round(400*s),overflowY:'auto'}}>
           {models.map(m=>{
             const isSel=m.id===value;
             return <div key={m.id}
               onClick={()=>{onChange(m.id);setOpen(false)}}
-              style={{padding:'5px 8px',fontSize:10,cursor:'pointer',
+              style={{padding:`${pad}px ${Math.round(pad*1.4)}px`,fontSize:fs,cursor:'pointer',
                 color:m.color,background:isSel?accent+'15':'transparent',
                 borderBottom:'1px solid #ffffff08',display:'flex',alignItems:'center',
-                gap:6,transition:'background 0.1s'}}
+                gap,transition:'background 0.1s'}}
               onMouseEnter={e=>e.target.style.background=accent+'22'}
               onMouseLeave={e=>e.target.style.background=isSel?accent+'15':'transparent'}>
-              <span style={{width:5,height:5,borderRadius:3,background:isSel?m.color:'transparent',flexShrink:0}}/>
+              <span style={{width:dot,height:dot,borderRadius:dot/2,background:isSel?m.color:'transparent',flexShrink:0}}/>
               <span>{m.label}</span>
-              <span style={{color:'#555',fontSize:9,marginLeft:'auto'}}>{m.cost}</span>
+              <span style={{color:'#555',fontSize:costFs,marginLeft:'auto'}}>{m.cost}</span>
             </div>;
           })}
         </div>,
         document.body
-      )}
+      );})()}
     </div>
   );
 }
@@ -965,10 +974,9 @@ function PanelModelDropdown({value,onChange,models,accent}){
 
 /* ═══════════════════ GROUP PANEL COMPONENT ═══════════════════ */
 function GroupPanel({gid,group,groupNodes,accent:initAccent,initPerNodeColors,openDanger,onClose,onSave,onDeleteGroup,onDeleteGroupOnly,onDeleteNode,
-  dirtyRef,exitRef,exitPromptRef,onPreview,
+  dirtyRef,exitRef,exitPromptRef,onPreview,panelW,setPanelW,
   customThemesRef,tierMap,nAbsFn,hsvToHex,hexToHsv,hueToHex,tintFromAccent}){
   const panelRef=useRef(null);
-  const[panelW,setPanelW]=useState(568);
   const dragRef=useRef(null);
   const[label,setLabel]=useState(group.label);
   const[accent,setAccent]=useState(initAccent);
@@ -1044,7 +1052,7 @@ function GroupPanel({gid,group,groupNodes,accent:initAccent,initPerNodeColors,op
 
   return(
     <div ref={panelRef} className="panel-enter" onMouseDown={e=>e.stopPropagation()}
-      style={{position:'absolute',top:0,right:0,bottom:0,width:panelW,zIndex:100}}>
+      style={{position:'fixed',top:0,right:0,bottom:0,width:panelW,zIndex:100}}>
       {/* Resize handle */}
       <div onPointerDown={e=>{e.preventDefault();e.stopPropagation();dragRef.current=true;document.body.style.cursor='col-resize';document.body.style.userSelect='none';
           const p=e.currentTarget.querySelector('.grh-pill');p.style.background=accent+'cc';p.style.borderColor=accent;p.style.height='42px';p.style.width='6px';
@@ -1393,9 +1401,8 @@ function GroupPanel({gid,group,groupNodes,accent:initAccent,initPerNodeColors,op
 
 /* ═══════════════════ LIVE PANEL COMPONENT ═══════════════════ */
 function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode,onChangeGroup,dirtyRef,exitRef,exitPromptRef,
-  customThemesRef,tierMap,hsvToHex,hexToHsv,hueToHex,tintFromAccent,onColorChange}){
+  customThemesRef,tierMap,hsvToHex,hexToHsv,hueToHex,tintFromAccent,onColorChange,panelW,setPanelW}){
   const panelRef=useRef(null);
-  const [panelW,setPanelW]=useState(568);
   const dragRef=useRef(null);
 
   /* Drag-to-resize left edge */
@@ -1538,7 +1545,7 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode,onChan
 
   return(
     <div ref={panelRef} className="panel-enter" onMouseDown={e=>e.stopPropagation()}
-      style={{position:'absolute',top:0,right:0,bottom:0,width:panelW,
+      style={{position:'fixed',top:0,right:0,bottom:0,width:panelW,
       zIndex:100}}>
       {/* Resize drag handle — outside overflow container so pill doesn't clip */}
       <div onPointerDown={e=>{e.preventDefault();e.stopPropagation();dragRef.current=true;document.body.style.cursor='col-resize';document.body.style.userSelect='none';
@@ -1864,6 +1871,7 @@ function App(){
   const[dyingWires,setDyingWires]=useState([]);
   const[modal,setModal]=useState(null); /* {type,id,msg,onConfirm} */
   const[panelNode,setPanelNode]=useState(null);
+  const[panelW,setPanelW]=useState(568); /* side panel width — lifted so canvas can shift */
   const[colorTick,setColorTick]=useState(0); /* bump to force re-render when node color changes */
   const[badgeTip,setBadgeTip]=useState(null); /* {type:'auth'|'error', x, y, data} */
   const panelDirtyRef=useRef(false);
@@ -1938,6 +1946,21 @@ function App(){
   const initialFitRef=useRef(false); /* true after first auto-fit + re-zoom */
 
   const toCanvas=useCallback((cx,cy)=>({x:(cx-pan.x)/zoom,y:(cy-pan.y)/zoom}),[pan,zoom]);
+  const worldToScreen=useCallback((wx,wy)=>({x:wx*zoom+pan.x,y:wy*zoom+pan.y}),[pan,zoom]);
+
+  /* ── Shift canvas when side panel opens/closes ── */
+  const canvasShift=useMemo(()=>{
+    if(!panelNode&&!groupEdit)return 0;
+    const buffer=40;
+    const vw=window.innerWidth;
+    const panelLeft=vw-panelW;
+    let maxScreenX=0;
+    groups.forEach(g=>{const r=worldToScreen(g.x+g.w,0).x;if(r>maxScreenX)maxScreenX=r;});
+    nodes.forEach(n=>{if(n.gid)return;const r=worldToScreen(n.x+n.w,0).x;if(r>maxScreenX)maxScreenX=r;});
+    const overlap=maxScreenX-(panelLeft-buffer);
+    if(overlap<=0)return 0;
+    return -overlap;
+  },[panelNode,groupEdit,panelW,groups,nodes,zoom,pan,worldToScreen]);
 
   /* ── zoom toward cursor ── */
   useEffect(()=>{
@@ -2903,12 +2926,16 @@ function App(){
         </div>
       </div>
 
-      {/* DOT GRID */}
+      {/* DOT GRID — stays full-screen, never shifts */}
       <div style={{position:'absolute',inset:0,
         backgroundImage:'radial-gradient(circle,#292929 1px,transparent 1px)',
         backgroundSize:`${30*zoom}px ${30*zoom}px`,
         backgroundPosition:`${pan.x%(30*zoom)}px ${pan.y%(30*zoom)}px`,
         pointerEvents:'none',zIndex:0}}/>
+
+      {/* CANVAS SHIFT WRAPPER — GPU-accelerated slide when panel opens/closes */}
+      <div className="canvas-shift-wrapper" style={{position:'absolute',inset:0,
+        transform:`translateX(${canvasShift}px)`}}>
 
       {/* TRANSFORM CONTAINER */}
       <div style={{position:'absolute',top:0,left:0,transformOrigin:'0 0',
@@ -3127,7 +3154,7 @@ function App(){
                     <span style={{fontSize:20,fontWeight:700,color:'#aaa',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
                     <ModelDropdown value={nd.model}
                       onChange={v=>updateNode(nd.id,{model:v})}
-                      models={MODELS} nodeBg={t.nodeBg} accent={t.accent} color={mdl.color}/>
+                      models={MODELS} nodeBg={t.nodeBg} accent={t.accent} color={mdl.color} zoom={zoom}/>
                   </div>
                 )}
                 {/* BEHAVIOUR PROMPT label — hides below THRESH_PROMPT_LABEL (2nd to collapse) */}
@@ -3423,6 +3450,8 @@ function App(){
         );
       })()}
 
+      </div>{/* END CANVAS SHIFT WRAPPER */}
+
       {/* SIDE PANEL — Live inspection layer */}
       {panelNode&&(()=>{
         const nd=nodes.find(n=>n.id===panelNode);
@@ -3437,7 +3466,8 @@ function App(){
           dirtyRef={panelDirtyRef} exitRef={panelExitRef} exitPromptRef={panelExitPromptRef}
           customThemesRef={customThemesRef} tierMap={tierMap}
           hsvToHex={hsvToHex} hexToHsv={hexToHsv} hueToHex={hueToHex} tintFromAccent={tintFromAccent}
-          onColorChange={()=>setColorTick(t=>t+1)}/>;
+          onColorChange={()=>setColorTick(t=>t+1)}
+          panelW={panelW} setPanelW={setPanelW}/>;
       })()}
 
       {/* BADGE TOOLTIP — rendered at root level to escape canvas transform */}
@@ -3686,7 +3716,7 @@ function App(){
         const groupNodes=nodes.filter(n=>n.gid===ge.gid);
         return <GroupPanel
           gid={ge.gid} group={g} groupNodes={groupNodes} accent={accent} initPerNodeColors={ge.savedPerNodeColors||{}}
-          openDanger={!!ge._openDanger}
+          openDanger={!!ge._openDanger} panelW={panelW} setPanelW={setPanelW}
           onClose={()=>{groupDirtyRef.current=false;setGroupPreview(null);setGroupEdit(null)}}
           onPreview={setGroupPreview}
           onSave={({label:newLabel,accent:newAccent,perNodeColors})=>{
