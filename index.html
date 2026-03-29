@@ -2397,9 +2397,18 @@ function App(){
           }
         }
         const sorted=[...fitted].sort((a,b)=>a.y-b.y);
-        const firstTargetY=ld.ep;
         for(let i=0;i<sorted.length;i++){
-          const targetY=i===0?firstTargetY:sorted[i-1].y+sorted[i-1].h+ld.gap;
+          /* Find the lowest bottom edge among all PREVIOUS groups that
+             horizontally overlap with this one. Side-by-side groups
+             can share the same Y level without being pushed down. */
+          let targetY=ld.ep;
+          for(let j=0;j<i;j++){
+            const hOverlap=sorted[i].x<sorted[j].x+sorted[j].w+ld.gap&&
+                            sorted[i].x+sorted[i].w+ld.gap>sorted[j].x;
+            if(hOverlap){
+              targetY=Math.max(targetY,sorted[j].y+sorted[j].h+ld.gap);
+            }
+          }
           if(Math.abs(sorted[i].y-targetY)>1){
             const idx=fitted.findIndex(f=>f.id===sorted[i].id);
             fitted[idx]={...fitted[idx],y:targetY};
