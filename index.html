@@ -170,8 +170,8 @@ const LOD_DIMS={
 const _LOD_STOPS=[
   {z:0.34,  cw:820,nh:400,ep:40,ng:160,vg:160,gh:84,gap:50,fs:1.0,pd:1.0},
   {z:0.255, cw:520,nh:240,ep:30,ng:100,vg:80, gh:60,gap:30,fs:1.25,pd:0.7},
-  {z:0.221, cw:320,nh:140,ep:20,ng:50, vg:36, gh:40,gap:16,fs:1.5,pd:0.5},
-  {z:0.17,  cw:220,nh:70, ep:12,ng:24, vg:16, gh:28,gap:8, fs:2.0,pd:0.35},
+  {z:0.221, cw:320,nh:140,ep:20,ng:50, vg:36, gh:52,gap:16,fs:1.5,pd:0.5},
+  {z:0.17,  cw:220,nh:70, ep:12,ng:24, vg:16, gh:64,gap:8, fs:2.0,pd:0.35},
 ];
 function _lerpDims(zoom){
   const S=_LOD_STOPS;
@@ -194,6 +194,10 @@ let _dimCache={z:-1,d:null};
 function getDims(zoom){
   if(Math.abs(zoom-_dimCache.z)<0.0001)return _dimCache.d;
   const d=_lerpDims(zoom);
+  /* Exact counter-scale: fs * zoom = constant (0.34) at all zoom levels.
+     This keeps text at a stable screen-pixel size instead of interpolating
+     fs between LOD stops which produces jumpy, inconsistent sizing. */
+  d.fs=0.34/Math.max(zoom,0.05);
   _dimCache={z:zoom,d:d};
   return d;
 }
@@ -3307,7 +3311,7 @@ function App(){
                   const ghH=_gd.gh;
                   const gfs=_gd.fs||1, gpd=_gd.pd||1;
                   const P=Math.round;
-                  const ghPadV=P(30*gpd), ghFs=P(22*gfs), dotSz=P(14*gfs);
+                  const ghPadV=P(30*gpd), ghFs=P(28*gfs), dotSz=P(14*gfs);
                   const btnFs=P(28*gfs), btnPad=`${P(14*gpd)}px ${P(32*gpd)}px`;
                   const btnPadSm=`${P(14*gpd)}px ${P(18*gpd)}px`;
                   const btnBr=P(8*gpd), btnGap=P(14*gpd);
@@ -3416,26 +3420,26 @@ function App(){
              ════════════════════════════════════════════════════════════ */
 
           /* ── renderStrip: horizontal bar — NOT a card ── */
-          const renderStrip=()=><>
-            <div data-nheader="1" style={{height:70,display:'flex',alignItems:'center',
-              gap:10,paddingLeft:18,paddingRight:12,flexShrink:0,
+          const renderStrip=()=>{const P=Math.round;return<>
+            <div data-nheader="1" style={{height:lodH,display:'flex',alignItems:'center',
+              gap:P(10*pd),paddingLeft:P(18*pd),paddingRight:P(12*pd),flexShrink:0,
               background:`linear-gradient(135deg, ${isErr?'#2a1414':t.headerBg} 0%, ${isErr?'#1a0e0e':t.nodeBg} 100%)`}}>
-              <div style={{width:12,height:12,borderRadius:6,flexShrink:0,
+              <div style={{width:P(12*fs),height:P(12*fs),borderRadius:P(6*fs),flexShrink:0,
                 background:isErr?'#cc3333':mdl.color,
-                boxShadow:`0 0 8px ${isErr?'#cc333366':mdl.color+'55'}`}}/>
-              <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:32,fontWeight:700,
+                boxShadow:`0 0 ${P(8*fs)}px ${isErr?'#cc333366':mdl.color+'55'}`}}/>
+              <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:700,
                 overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
-                letterSpacing:0.5,opacity:0.9}}>{nd.label}</span>
+                letterSpacing:P(1*fs),opacity:0.9}}>{nd.label}</span>
               <span onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
-                style={{color:isErr?'#cc3333':t.accent,fontSize:24,cursor:'pointer',
-                  opacity:0.5,padding:'0 4px',lineHeight:1}}>{isErr?'⚠':'✓'}</span>
+                style={{color:isErr?'#cc3333':t.accent,fontSize:P(28*fs),cursor:'pointer',
+                  opacity:0.5,padding:`0 ${P(4*pd)}px`,lineHeight:1}}>{isErr?'⚠':'✓'}</span>
               <span onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
                 onMouseDown={e=>e.stopPropagation()}
-                style={{color:t.text,fontSize:24,cursor:'pointer',
-                  opacity:0.4,padding:'0 4px',lineHeight:1}}>✕</span>
+                style={{color:t.text,fontSize:P(28*fs),cursor:'pointer',
+                  opacity:0.4,padding:`0 ${P(4*pd)}px`,lineHeight:1}}>✕</span>
             </div>
-          </>;
+          </>};
 
           /* ── renderMinimal: label card — title band + blank body ── */
           const renderMinimal=()=>{
@@ -3447,7 +3451,7 @@ function App(){
               borderBottom:`2px solid ${isErr?'#cc333322':t.accent+'18'}`}}>
               <div style={{width:dotSz,height:dotSz,borderRadius:dotSz/2,flexShrink:0,
                 background:isErr?'#cc3333':t.accent,opacity:0.7}}/>
-              <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:P(34*fs),fontWeight:600,
+              <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:600,
                 overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
               {nd.auth&&<span style={{fontSize:P(20*fs),fontWeight:700,background:'#d4a03022',
                 color:'#d4a030',padding:`${P(4*pd)}px ${P(10*pd)}px`,borderRadius:P(4*pd),letterSpacing:0.8,
@@ -3479,24 +3483,24 @@ function App(){
               <div style={{width:dotSz,height:dotSz,borderRadius:dotSz/2,flexShrink:0,
                 background:isErr?'#cc3333':t.accent,
                 boxShadow:`0 0 ${P(8*pd)}px ${isErr?'#cc333888':t.accent+'88'}`}}/>
-              <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:P(32*fs),fontWeight:600,overflow:'hidden',
+              <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:600,overflow:'hidden',
                 textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
               {nd.auth&&<span style={{cursor:'default'}}
                 onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'auth',x:r.right,y:r.bottom,perms:nd.authPerms||[]})}}
                 onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
-                <span style={{fontSize:P(22*fs),fontWeight:700,background:'#d4a03033',
+                <span style={{fontSize:P(20*fs),fontWeight:700,background:'#d4a03033',
                   color:'#d4a030',padding:`${P(6*pd)}px ${P(14*pd)}px`,borderRadius:P(5*pd),letterSpacing:1}}>AUTH</span>
               </span>}
               {isErr&&<span style={{cursor:'default'}}
                 onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'error',x:r.right,y:r.bottom,errorInfo:nd.errorInfo})}}
                 onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
-                <span style={{fontSize:P(22*fs),fontWeight:700,background:'#cc333333',
+                <span style={{fontSize:P(20*fs),fontWeight:700,background:'#cc333333',
                   color:'#ff6666',padding:`${P(6*pd)}px ${P(14*pd)}px`,borderRadius:P(5*pd),letterSpacing:1}}>ERROR</span>
               </span>}
               <button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:isErr?'#cc3333':t.accent,
-                  fontSize:P(30*fs),cursor:'pointer',padding:0,lineHeight:1,width:btnSz,height:btnSz,
+                  fontSize:P(28*fs),cursor:'pointer',padding:0,lineHeight:1,width:btnSz,height:btnSz,
                   display:'flex',alignItems:'center',justifyContent:'center',borderRadius:P(8*pd),
                   opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
                 onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
@@ -3504,7 +3508,7 @@ function App(){
               <button onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:t.text,
-                  fontSize:P(30*fs),cursor:'pointer',padding:0,lineHeight:1,width:btnSz,height:btnSz,
+                  fontSize:P(28*fs),cursor:'pointer',padding:0,lineHeight:1,width:btnSz,height:btnSz,
                   display:'flex',alignItems:'center',justifyContent:'center',borderRadius:P(8*pd),
                   opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
                 onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
@@ -3514,15 +3518,15 @@ function App(){
               <div style={{padding:`${P(16*pd)}px ${P(32*pd)}px`,borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
                 display:'flex',alignItems:'center',gap:P(12*pd),flexShrink:0,overflow:'hidden'}}
                 onClick={e=>e.stopPropagation()} onMouseDown={e=>e.stopPropagation()} onPointerDown={e=>e.stopPropagation()}>
-                <span style={{fontSize:P(22*fs),fontWeight:700,color:'#aaa',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
+                <span style={{fontSize:P(20*fs),fontWeight:700,color:'#aaa',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
                 <ModelDropdown value={nd.model} onChange={v=>updateNode(nd.id,{model:v})}
                   models={MODELS} nodeBg={t.nodeBg} accent={t.accent} color={t.text} zoom={zoom}
-                  fontSize={P(22*fs)} dotSize={dotSz}/>
+                  fontSize={P(20*fs)} dotSize={dotSz}/>
               </div>
             )}
             {nd.h>=THRESH_PROMPT_BODY?
               <div style={{flex:1,margin:`0 ${P(32*pd)}px`,padding:`${P(12*pd)}px 0`,overflow:'hidden'}}>
-                <div style={{fontSize:P(24*fs),lineHeight:1.35,color:isErr?'#cc9999':t.text+'aa',
+                <div style={{fontSize:P(26*fs),lineHeight:1.35,color:isErr?'#cc9999':t.text+'aa',
                   overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.prompt}</div>
               </div>
               :<div style={{flex:1,background:isErr?'#2a1414':t.nodeBg}}/>}
