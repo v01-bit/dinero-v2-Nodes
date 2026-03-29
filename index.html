@@ -132,7 +132,11 @@ const MODELS=[
   {id:'embeddings',label:'Embeddings',cost:'$',color:'#9860d8'},
   {id:'custom',label:'Custom',cost:'—',color:'#666'},
 ];
-const GH=84, GAP=50, MIN_GW=500, MIN_GH=220, MIN_NW=400, MIN_NH=80;
+const GH=84, GAP=50, MIN_NW=400, MIN_NH=80;
+/* LOD-aware minimum group sizes — scale with layout dimensions so groups
+   don't stretch wider/taller than their content at lower zoom tiers. */
+function minGW(ld){ return Math.max(ld.cw*0.5+ld.ep*2, 120); }
+function minGH(ld){ return Math.max(ld.nh*0.5+ld.ep*2+ld.gh, 100); }
 const tierMap={orchestrator:'orchestrator',managers:'manager',workers:'worker',infra:'infra'};
 
 /* ═══════════════════ DEFAULT DATA ═══════════════════ */
@@ -267,11 +271,12 @@ function mkGroups(){
   const y1=y0+GH1+TIER_GAP;
   const y2=y1+GH1+TIER_GAP;
   const y3=y2+GH2+TIER_GAP;
-  /* Horizontal positioning: center narrower groups, use full width for wide ones */
-  const orchX=MARGIN_X+Math.max(0,(availW-GW1)/2);
-  const mgrX=MARGIN_X+Math.max(0,(availW-GW4)/2);
-  const wrkX=MARGIN_X+Math.max(0,(availW-GW4)/2);
-  const infraX=MARGIN_X+Math.max(0,(availW-GW2)/2);
+  /* Horizontal positioning: left-align all groups so they stay visually
+     consistent as widths change across LOD tiers on zoom in/out */
+  const orchX=MARGIN_X;
+  const mgrX=MARGIN_X;
+  const wrkX=MARGIN_X;
+  const infraX=MARGIN_X;
   return[
     {id:'orchestrator',label:'Orchestrator',tier:'orchestrator',x:orchX,y:y0,w:GW1,h:GH1},
     {id:'managers',label:'Managers',tier:'manager',x:mgrX,y:y1,w:GW4,h:GH1},
@@ -786,13 +791,14 @@ function validateNoCollision(finalCol,finalRow,shiftedNodes){
   return{col:bestCol,row:bestRow};
 }
 
-function pushGroups(cid,gs){
+function pushGroups(cid,gs,gap){
+  const g0=gap!=null?gap:GAP;
   let a=gs.map(g=>({...g}));
   for(let it=0;it<30;it++){let p=false;
     for(let i=0;i<a.length;i++)for(let j=i+1;j<a.length;j++){
-      if(!rectsOverlap(a[i],a[j],GAP))continue;p=true;
-      const oR=(a[i].x+a[i].w+GAP)-a[j].x,oL=(a[j].x+a[j].w+GAP)-a[i].x;
-      const oD=(a[i].y+a[i].h+GAP)-a[j].y,oU=(a[j].y+a[j].h+GAP)-a[i].y;
+      if(!rectsOverlap(a[i],a[j],g0))continue;p=true;
+      const oR=(a[i].x+a[i].w+g0)-a[j].x,oL=(a[j].x+a[j].w+g0)-a[i].x;
+      const oD=(a[i].y+a[i].h+g0)-a[j].y,oU=(a[j].y+a[j].h+g0)-a[i].y;
       const mn=Math.min(oR,oL,oD,oU);
       const iIsDragged=a[i].id===cid,jIsDragged=a[j].id===cid;
       if(iIsDragged){
@@ -2172,6 +2178,8 @@ function App(){
   const sideAssignRef=useRef({}); /* { 'src→tgt': {srcSide,tgtSide,srcLocked?,tgtLocked?} } */
   const [nodeSizes,setNodeSizes]=useState({}); /* {nodeId:{w,h}} measured from DOM */
   const manualGroupSizes=useRef({}); /* {groupId:{w,h}} — floor set by manual resize */
+  /* zoomCascadeFrameRef removed — vertical-only overlap resolution eliminates horizontal drift */
+  const lastCascadeZoomRef=useRef(null); /* zoom level at last full cascade — detects zoom changes */
   const customThemesRef=useRef({}); /* {groupId:{nodeBg,headerBg,accent,text}} — custom group themes */
   /* HSV ↔ Hex helpers for color picker */
   function hsvToHex(h,s,v){
@@ -2341,8 +2349,10 @@ function App(){
       if(!gNodes.length)return g;
       let maxR=0,maxB=0;
       gNodes.forEach(nd=>{
-        const mw=(measured[nd.id]&&measured[nd.id].w)||Math.min(nd.w,lcw);
-        const mh=(measured[nd.id]&&measured[nd.id].h)||Math.min(nd.h,ld.nh);
+        /* Use LOD-clamped sizes for bounds — DOM measurements lag by one frame
+           and would make groups temporarily too large on zoom transitions. */
+        const mw=Math.min(nd.w,lcw);
+        const mh=Math.min(nd.h,ld.nh);
         /* Use group-aware position for accurate bounds */
         const useX=(nd.col!=null)?gridToPosInGroup(nd.col,nd.row,gNodes,zoom).x:nd.x;
         const useY=(nd.row!=null)?gridToPosInGroup(nd.col,nd.row,gNodes,zoom).y:nd.y;
@@ -2350,28 +2360,56 @@ function App(){
         maxB=Math.max(maxB,useY+mh+PAD+ld.gh);
       });
       const floor=manualGroupSizes.current[g.id];
-      const fitW=Math.max(maxR, MIN_GW);
-      const fitH=Math.max(maxB, MIN_GH);
-      /* If the content now fits smaller than the floor, clear the stale floor */
-      if(floor && (maxR < floor.w - 50 || maxB < floor.h - 50)){
-        delete manualGroupSizes.current[g.id];
-      }
+      /* Content minimum — never smaller than what nodes need */
+      const contentW=Math.max(maxR, minGW(ld));
+      const contentH=Math.max(maxB, minGH(ld));
+      /* Respect manual resize floor — group stays at least as big as user set it */
+      const fitW=floor?Math.max(contentW, floor.w):contentW;
+      const fitH=floor?Math.max(contentH, floor.h):contentH;
       if(Math.abs(fitW-g.w)>1||Math.abs(fitH-g.h)>1){
         changed=true;return{...g,w:fitW,h:fitH}}
       return g;
     });
-    /* Cascade vertical positions — compact groups to exactly GAP spacing.
-       Pulls up AND pushes down so groups always stack tightly at every LOD tier. */
+    /* Group position management:
+       - On zoom change: cascade to pack groups tightly with LOD-appropriate gap.
+       - On normal renders: only resolve actual 2D overlaps — no cascade.
+       This lets users freely arrange groups while keeping zoom transitions clean. */
     if(!activeDragId){
-      const sorted=[...fitted].sort((a,b)=>a.y-b.y);
-      for(let i=1;i<sorted.length;i++){
-        const prev=sorted[i-1];
-        const targetY=prev.y+prev.h+ld.gap;
-        if(Math.abs(sorted[i].y-targetY)>1){
-          const idx=fitted.findIndex(f=>f.id===sorted[i].id);
-          fitted[idx]={...fitted[idx],y:targetY};
-          sorted[i]={...sorted[i],y:targetY};
-          changed=true;
+      const prevZoom=lastCascadeZoomRef.current;
+      const zoomChanged=prevZoom!==null&&Math.abs(prevZoom-zoom)>0.001;
+      lastCascadeZoomRef.current=zoom;
+      if(zoomChanged&&fitted.length>0){
+        /* Zoom changed — repack groups vertically with ld.gap spacing.
+           X positions are NEVER changed — only user dragging changes X.
+           This prevents gaps from inflating/deflating on zoom transitions. */
+        const sorted=[...fitted].sort((a,b)=>a.y-b.y);
+        const firstTargetY=ld.ep;
+        for(let i=0;i<sorted.length;i++){
+          const targetY=i===0?firstTargetY:sorted[i-1].y+sorted[i-1].h+ld.gap;
+          if(Math.abs(sorted[i].y-targetY)>1){
+            const idx=fitted.findIndex(f=>f.id===sorted[i].id);
+            fitted[idx]={...fitted[idx],y:targetY};
+            sorted[i]={...sorted[i],y:targetY};
+            changed=true;
+          }
+        }
+      }else{
+        /* Normal render — vertical-only overlap resolution.
+           Never shift groups horizontally — only user dragging should change X.
+           This prevents groups from drifting left/right on zoom transitions. */
+        const sorted=[...fitted].sort((a,b)=>a.y-b.y);
+        for(let i=1;i<sorted.length;i++){
+          const prev=sorted[i-1];
+          /* Only push down if the groups actually overlap vertically AND horizontally */
+          const hOverlap=sorted[i].x<prev.x+prev.w+ld.gap&&sorted[i].x+sorted[i].w+ld.gap>prev.x;
+          if(!hOverlap)continue; /* side-by-side — no conflict */
+          const targetY=prev.y+prev.h+ld.gap;
+          if(sorted[i].y<targetY-1){
+            const idx=fitted.findIndex(f=>f.id===sorted[i].id);
+            fitted[idx]={...fitted[idx],y:targetY};
+            sorted[i]={...sorted[i],y:targetY};
+            changed=true;
+          }
         }
       }
     }
@@ -2670,8 +2708,9 @@ function App(){
         const MIN_SPACING=40; /* minimum inter-node gap during resize — matches routing clearance */
         const contentMinW=2*EP+r.cols*r.nodeW+(r.cols>1?(r.cols-1)*MIN_SPACING:0);
         const contentMinH=2*EP+r.rows*r.nodeH+(r.rows>1?(r.rows-1)*MIN_SPACING:0)+getDims(zoom).gh;
-        const minW=Math.max(MIN_GW,contentMinW);
-        const minH=Math.max(MIN_GH,contentMinH);
+        const _ld=getDims(zoom);
+        const minW=Math.max(minGW(_ld),contentMinW);
+        const minH=Math.max(minGH(_ld),contentMinH);
         let newX=r.x,newY=r.y,newW=r.w,newH=r.h;
         if(r.hnd.includes('e'))newW=Math.max(minW,r.w+dx);
         if(r.hnd.includes('s'))newH=Math.max(minH,r.h+dy);
@@ -2927,12 +2966,21 @@ function App(){
 
       case 'wiring': /* already handled above */
       case 'dragging_group':
+        /* Mark this group as manually positioned so cascade respects it */
+        /* group positions now freely movable — no manual tracking needed */
+        break;
       case 'panning':
         break;
       case 'resizing_group':{
         const gid=ir.id;
-        const g=groups.find(g=>g.id===gid);
-        if(g)manualGroupSizes.current[gid]={w:g.w,h:g.h};
+        /* Read latest group state via functional update — avoids stale closure.
+           During resize, setGroups is called many times; the `groups` variable
+           in this useCallback may be one frame behind. */
+        setGroups(gs=>{
+          const g=gs.find(g=>g.id===gid);
+          if(g)manualGroupSizes.current[gid]={w:g.w,h:g.h};
+          return gs; /* no mutation — just capturing the floor */
+        });
         /* Snap nodes back to authoritative grid positions after resize ends.
            During resize, nodes get repositioned with dynamic spacing.
            On release, restore gridToPosInGroup so grid system stays consistent. */

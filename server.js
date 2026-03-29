@@ -8,7 +8,7 @@ const server = http.createServer((req, res) => {
   const types = {'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json'};
   fs.readFile(filePath, (err, data) => {
     if (err) { res.writeHead(404); res.end('Not found'); return; }
-    res.writeHead(200, {'Content-Type': types[ext] || 'text/plain'});
+    res.writeHead(200, {'Content-Type': types[ext] || 'text/plain', 'Cache-Control':'no-store, no-cache, must-revalidate', 'Pragma':'no-cache'});
     res.end(data);
   });
 });
