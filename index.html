@@ -140,6 +140,22 @@ const THRESH_PROMPT_LABEL=NH-80;  /* 2nd: hide "BEHAVIOUR PROMPT" label */
 const THRESH_MODEL=NH-160;        /* 3rd: hide model dropdown row */
 /* Below THRESH_MODEL: header only */
 const THRESH_WIDTH_COMPACT=550;   /* width below which padding compresses */
+/* ── Display zoom baseline: internal 0.34 = displayed 100% ── */
+const ZOOM_BASELINE=0.34;
+/* ── LOD (Level-of-Detail) system ── */
+function getLOD(zoom){
+  if(zoom>=0.6)return'full';
+  if(zoom>=0.45)return'compact';
+  if(zoom>=0.3)return'minimal';
+  return'strip';
+}
+const COL_WIDTH={full:820,compact:520,minimal:320,strip:220};
+const LOD_DIMS={
+  full:   {nh:400,ep:40,ng:160,vg:160,gh:84,gap:50},
+  compact:{nh:240,ep:30,ng:100,vg:80, gh:60,gap:30},
+  minimal:{nh:140,ep:20,ng:50, vg:36, gh:40,gap:16},
+  strip:  {nh:70, ep:12,ng:24, vg:16, gh:28,gap:8},
+};
 const EP=40; /* edge padding inside groups — room for wire lanes */
 const NG=160; /* horizontal gap between nodes — routing clearance */
 /* ── Wire routing constants ── */
@@ -256,10 +272,19 @@ function mkWires(){return[
   {src:'review',srcPort:'review:t1',tgt:'din-core',tgtPort:'din-core:b5'},
 ]}
 
+/* ═══════════════════ SUMMARY HELPER ═══════════════════ */
+function nodeSummary(prompt){
+  if(!prompt)return'';
+  const first=prompt.split(/[.\n]/)[0]||'';
+  const words=first.trim().split(/\s+/).filter(Boolean);
+  if(words.length<=5)return first.trim();
+  return words.slice(0,5).join(' ')+'...';
+}
+
 /* ═══════════════════ GEOMETRY HELPERS ═══════════════════ */
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
-function nAbs(n,gs){const g=gs.find(g=>g.id===n.gid);return g?{x:g.x+n.x,y:g.y+GH+2+n.y}:{x:n.x,y:n.y}}
-function nCtr(n,gs){const a=nAbs(n,gs);return{x:a.x+n.w/2,y:a.y+n.h/2}}
+function nAbs(n,gs,lod){const g=gs.find(g=>g.id===n.gid);const gh=LOD_DIMS[lod||'full'].gh;return g?{x:g.x+n.x,y:g.y+gh+2+n.y}:{x:n.x,y:n.y}}
+function nCtr(n,gs,lod){const a=nAbs(n,gs,lod);return{x:a.x+n.w/2,y:a.y+n.h/2}}
 
 
 /* ── Immutable port system ──
@@ -288,7 +313,7 @@ function portSide(portId){
    Returns:
      portPositions — {portId: {x, y, side, nodeId}} flat lookup
      portsByNode   — {nodeId: {side: [{id, x, y, connected}]}} for rendering */
-function computePortPositions(wires,nodes,groups,sideAssign,nodeSizes){
+function computePortPositions(wires,nodes,groups,sideAssign,nodeSizes,lod){
   const portPositions={};
   const portsByNode={};
   nodeSizes=nodeSizes||{};
@@ -312,7 +337,7 @@ function computePortPositions(wires,nodes,groups,sideAssign,nodeSizes){
   wires.forEach(w=>{
     const sN=nodeMap[w.src],tN=nodeMap[w.tgt];
     if(!sN||!tN)return;
-    const sAbs=nAbs(sN,groups),tAbs=nAbs(tN,groups);
+    const sAbs=nAbs(sN,groups,lod),tAbs=nAbs(tN,groups,lod);
     const key=w.src+'\u2192'+w.tgt;
     const prev=sideAssign[key]||{};
     const srcSide=prev.srcLocked?prev.srcSide:bestSide(sAbs,rw(sN),rh(sN),tAbs,rw(tN),rh(tN),prev.srcSide);
@@ -324,7 +349,7 @@ function computePortPositions(wires,nodes,groups,sideAssign,nodeSizes){
 
   /* Position ports — connected ports use dynamic side, spares stay static */
   nodes.forEach(nd=>{
-    const abs=nAbs(nd,groups);
+    const abs=nAbs(nd,groups,lod);
     const nw=rw(nd),nh=rh(nd);
     portsByNode[nd.id]={};
     const sidePorts={right:[],left:[],top:[],bottom:[]};
@@ -455,18 +480,22 @@ function resolveEntryDirection(cursorAbsX,cursorAbsY,group){
 }
 
 /* ── Grid system: col/row are authoritative, x/y are derived ── */
-function gridToPos(col,row){
-  return{x:EP+col*(NW+NG),y:EP+row*(NH+VG)};
+function gridToPos(col,row,lod){
+  const d=LOD_DIMS[lod||'full'];
+  const cw=COL_WIDTH[lod||'full'];
+  return{x:d.ep+col*(cw+d.ng),y:d.ep+row*(d.nh+d.vg)};
 }
-function migrateNodeGrid(n){
+function migrateNodeGrid(n,lod){
   if(n.col==null||n.row==null){
-    n.col=Math.round((n.x-EP)/(NW+NG));
-    n.row=Math.round((n.y-EP)/(NH+VG));
+    const d=LOD_DIMS[lod||'full'];
+    const cw=COL_WIDTH[lod||'full'];
+    n.col=Math.round((n.x-d.ep)/(cw+d.ng));
+    n.row=Math.round((n.y-d.ep)/(d.nh+d.vg));
   }
 }
 
 /* ── Deduplicate col/row: resolve collisions after migration ── */
-function dedupeGrid(groupNodes){
+function dedupeGrid(groupNodes,lod){
   const seen=new Set();
   groupNodes.forEach(n=>{
     const key=n.col+','+n.row;
@@ -477,7 +506,7 @@ function dedupeGrid(groupNodes){
           const nc=n.col+dc,nr=n.row+dr;
           const nk=nc+','+nr;
           if(!seen.has(nk)){n.col=nc;n.row=nr;seen.add(nk);
-            const pos=gridToPos(nc,nr);n.x=pos.x;n.y=pos.y;return;}
+            const pos=gridToPos(nc,nr,lod);n.x=pos.x;n.y=pos.y;return;}
         }
       }
     }else{seen.add(key);}
@@ -485,8 +514,10 @@ function dedupeGrid(groupNodes){
 }
 
 /* ── Placement: cursor-proximity-driven slot selection ── */
-function findInsertionSlot(entryDir,groupNodes,cursorRelX,cursorRelY){
-  if(!groupNodes.length)return{col:0,row:0,...gridToPos(0,0)};
+function findInsertionSlot(entryDir,groupNodes,cursorRelX,cursorRelY,lod){
+  const cw=COL_WIDTH[lod||'full'];
+  const nh=LOD_DIMS[lod||'full'].nh;
+  if(!groupNodes.length)return{col:0,row:0,...gridToPos(0,0,lod)};
 
   /* Single node: 4 adjacent candidates, pick closest to cursor */
   if(groupNodes.length===1){
@@ -497,11 +528,11 @@ function findInsertionSlot(entryDir,groupNodes,cursorRelX,cursorRelY){
     ];
     let best=cands[0],bestD=Infinity;
     for(const c of cands){
-      const p=gridToPos(c.col,c.row);
-      const d=Math.hypot(cursorRelX-(p.x+NW/2),cursorRelY-(p.y+NH/2));
+      const p=gridToPos(c.col,c.row,lod);
+      const d=Math.hypot(cursorRelX-(p.x+cw/2),cursorRelY-(p.y+nh/2));
       if(d<bestD){bestD=d;best=c;}
     }
-    return{col:best.col,row:best.row,...gridToPos(best.col,best.row)};
+    return{col:best.col,row:best.row,...gridToPos(best.col,best.row,lod)};
   }
 
   const cols=groupNodes.map(n=>n.col);
@@ -532,17 +563,17 @@ function findInsertionSlot(entryDir,groupNodes,cursorRelX,cursorRelY){
   /* Score all by distance to cursor, pick closest */
   let best=safeCands[0],bestD=Infinity;
   for(const c of safeCands){
-    const p=gridToPos(c.col,c.row);
-    const d=Math.hypot(cursorRelX-(p.x+NW/2),cursorRelY-(p.y+NH/2));
+    const p=gridToPos(c.col,c.row,lod);
+    const d=Math.hypot(cursorRelX-(p.x+cw/2),cursorRelY-(p.y+nh/2));
     if(d<bestD){bestD=d;best=c;}
   }
-  return{col:best.col,row:best.row,...gridToPos(best.col,best.row)};
+  return{col:best.col,row:best.row,...gridToPos(best.col,best.row,lod)};
 }
 
 /* findReorderSlot REMOVED — unified model: same-group uses findInsertionSlot + expandGroupForPlacement */
 
 /* ── Grid compaction: remove gaps after node leaves group ── */
-function compactGrid(groupNodes){
+function compactGrid(groupNodes,lod){
   if(!groupNodes.length)return;
   const usedCols=[...new Set(groupNodes.map(n=>n.col))].sort((a,b)=>a-b);
   const usedRows=[...new Set(groupNodes.map(n=>n.row))].sort((a,b)=>a-b);
@@ -550,13 +581,15 @@ function compactGrid(groupNodes){
   const rowMap={};usedRows.forEach((r,i)=>rowMap[r]=i);
   groupNodes.forEach(n=>{
     n.col=colMap[n.col];n.row=rowMap[n.row];
-    const pos=gridToPos(n.col,n.row);
+    const pos=gridToPos(n.col,n.row,lod);
     n.x=pos.x;n.y=pos.y;
   });
 }
 
 /* ── Expansion: shift for left/top, grow for right/bottom ── */
-function expandGroupForPlacement(group,slotCol,slotRow,allGroups,groupNodes){
+function expandGroupForPlacement(group,slotCol,slotRow,allGroups,groupNodes,lod){
+  const d=LOD_DIMS[lod||'full'];
+  const cw=COL_WIDTH[lod||'full'];
   let g={...group};
   let shifted=groupNodes.map(n=>({...n}));
   let finalCol=slotCol,finalRow=slotRow;
@@ -564,35 +597,35 @@ function expandGroupForPlacement(group,slotCol,slotRow,allGroups,groupNodes){
     const shiftCols=-slotCol;
     shifted.forEach(n=>n.col+=shiftCols);
     finalCol=0;
-    g.x-=shiftCols*(NW+NG);
+    g.x-=shiftCols*(cw+d.ng);
   }
   if(slotRow<0){
     const shiftRows=-slotRow;
     shifted.forEach(n=>n.row+=shiftRows);
     finalRow=0;
-    g.y-=shiftRows*(NH+VG);
+    g.y-=shiftRows*(d.nh+d.vg);
   }
   shifted.forEach(n=>{
-    const pos=gridToPos(n.col,n.row);
+    const pos=gridToPos(n.col,n.row,lod);
     n.x=pos.x;n.y=pos.y;
   });
-  const finalPos=gridToPos(finalCol,finalRow);
+  const finalPos=gridToPos(finalCol,finalRow,lod);
   /* Compute tight-fit size from ALL content (shifted nodes + new slot) */
-  let maxR=finalPos.x+NW+EP, maxB=finalPos.y+NH+EP;
+  let maxR=finalPos.x+cw+d.ep, maxB=finalPos.y+d.nh+d.ep;
   shifted.forEach(n=>{
-    maxR=Math.max(maxR,n.x+NW+EP);
-    maxB=Math.max(maxB,n.y+NH+EP);
+    maxR=Math.max(maxR,n.x+cw+d.ep);
+    maxB=Math.max(maxB,n.y+d.nh+d.ep);
   });
   g.w=maxR;
-  g.h=maxB+GH;
+  g.h=maxB+d.gh;
   const updatedGroups=allGroups.map(og=>og.id===g.id?g:og);
   return{groups:pushGroups(g.id,updatedGroups),nodes:shifted,
     col:finalCol,row:finalRow,slotX:finalPos.x,slotY:finalPos.y};
 }
 
 /* ── Ghost preview position (no state mutation) ── */
-function previewExpandedSlot(col,row){
-  return gridToPos(col<0?0:col,row<0?0:row);
+function previewExpandedSlot(col,row,lod){
+  return gridToPos(col<0?0:col,row<0?0:row,lod);
 }
 
 /* ── Post-expansion collision check: absolute no-overlap guarantee ── */
@@ -1863,6 +1896,7 @@ function App(){
     return{x:(vw-gw*z)/2-minX*z, y:(vh-gh*z)/2-minY*z};
   });
   const[zoom,setZoom]=useState(()=>window.__initZoom||0.5);
+  const lod=getLOD(zoom);
   const[selected,setSelected]=useState(null);
   const[selectedGroup,setSelectedGroup]=useState(null); /* group id or null */
   const[wiringFrom,setWiringFrom]=useState(null); /* {nid,side} or null */
@@ -2040,17 +2074,23 @@ function App(){
     if(isNodeDrag)return; /* freeze group sizing during node drag */
     const activeResizeId=(ir&&ir.type==='resizing_group')?ir.id:null;
     const activeDragId=(ir&&ir.type==='dragging_group')?ir.id:null;
-    const PAD=EP;
+    const ld=LOD_DIMS[lod];
+    const lcw=COL_WIDTH[lod];
+    const PAD=ld.ep;
     let changed=false;
     /* Fix stale node positions: if any grouped node's x/y doesn't match
        gridToPos(col,row), correct it. This catches cases where the drop
        handler or other code path failed to update x/y after changing col/row.
-       Skip nodes in the actively resizing group (they use dynamic spacing). */
+       Skip nodes in the actively resizing group (they use dynamic spacing).
+       Also applies centering offset so nodes are centered in their column slot. */
     let nodeFixups=null;
     nodes.forEach(nd=>{
       if(!nd.gid||nd.col==null||nd.row==null)return;
       if(nd.gid===activeResizeId)return; /* skip resizing group — dynamic spacing */
-      const correctPos=gridToPos(nd.col,nd.row);
+      const lodW=Math.min(nd.w,lcw);
+      const colOffset=(lcw-lodW)*0.5;
+      const correctPos=gridToPos(nd.col,nd.row,lod);
+      correctPos.x+=colOffset;
       if(Math.abs(nd.x-correctPos.x)>1||Math.abs(nd.y-correctPos.y)>1){
         if(!nodeFixups)nodeFixups={};
         nodeFixups[nd.id]=correctPos;
@@ -2068,13 +2108,13 @@ function App(){
       if(!gNodes.length)return g;
       let maxR=0,maxB=0;
       gNodes.forEach(nd=>{
-        const mw=(measured[nd.id]&&measured[nd.id].w)||nd.w;
-        const mh=(measured[nd.id]&&measured[nd.id].h)||nd.h;
+        const mw=(measured[nd.id]&&measured[nd.id].w)||Math.min(nd.w,lcw);
+        const mh=(measured[nd.id]&&measured[nd.id].h)||Math.min(nd.h,ld.nh);
         /* Use authoritative grid position when available, not potentially stale x/y */
-        const useX=(nd.col!=null)?gridToPos(nd.col,0).x:nd.x;
-        const useY=(nd.row!=null)?gridToPos(0,nd.row).y:nd.y;
+        const useX=(nd.col!=null)?gridToPos(nd.col,0,lod).x:nd.x;
+        const useY=(nd.row!=null)?gridToPos(0,nd.row,lod).y:nd.y;
         maxR=Math.max(maxR,useX+mw+PAD);
-        maxB=Math.max(maxB,useY+mh+PAD+GH);
+        maxB=Math.max(maxB,useY+mh+PAD+ld.gh);
       });
       const floor=manualGroupSizes.current[g.id];
       const fitW=Math.max(maxR, MIN_GW);
@@ -2087,12 +2127,12 @@ function App(){
         changed=true;return{...g,w:fitW,h:fitH}}
       return g;
     });
-    /* Cascade vertical positions so groups maintain GAP spacing */
+    /* Cascade vertical positions so groups maintain LOD-dependent GAP spacing */
     if(!activeDragId){
       const sorted=[...fitted].sort((a,b)=>a.y-b.y);
       for(let i=1;i<sorted.length;i++){
         const prev=sorted[i-1];
-        const minY=prev.y+prev.h+GAP;
+        const minY=prev.y+prev.h+ld.gap;
         if(sorted[i].y<minY){
           const idx=fitted.findIndex(f=>f.id===sorted[i].id);
           fitted[idx]={...fitted[idx],y:minY};
@@ -2124,8 +2164,8 @@ function App(){
 
   /* ── port positions from immutable port definitions ── */
   const{portPositions,portsByNode}=useMemo(()=>{
-    return computePortPositions(wires,nodes,groups,sideAssignRef.current,nodeSizes);
-  },[wires,nodes,groups,nodeSizes]);
+    return computePortPositions(wires,nodes,groups,sideAssignRef.current,nodeSizes,lod);
+  },[wires,nodes,groups,nodeSizes,lod]);
 
   const wireData=useMemo(()=>{
     return wires.map((w,i)=>{
@@ -2142,8 +2182,7 @@ function App(){
     }).filter(Boolean);
   },[wires,nodes,groups,portPositions]);
 
-  /* ── adaptive zoom: simplified view below 0.4 ── */
-  const simplified=zoom<0.25;
+  /* ── LOD computation (also computed earlier for layout — kept here for reference) ── */
 
   /* ── MOUSE DOWN ── */
   const DRAG_THRESHOLD=5;
@@ -2208,7 +2247,7 @@ function App(){
       const nd=nodes.find(n=>n.id===nid);if(!nd)return;
       const g=groups.find(g=>g.id===nd.gid);
       if(wiringFrom){setWiringFrom(null);setWiringMouse(null)}
-      const absX=g?g.x+nd.x:nd.x,absY=g?g.y+GH+2+nd.y:nd.y;
+      const absX=g?g.x+nd.x:nd.x,absY=g?g.y+LOD_DIMS[lod].gh+2+nd.y:nd.y;
       const c=toCanvas(e.clientX,e.clientY);
       const isFormEl=tag==='INPUT'||tag==='TEXTAREA'||tag==='SELECT';
       setSelected(nid);
@@ -2301,9 +2340,10 @@ function App(){
         let hoverGid=null;
 
         /* Phase 1: Check OTHER groups with SNAP_MARGIN (for approaching) */
+        const lodGH=LOD_DIMS[lod].gh;
         for(const g of groups){
           if(g.id===origGid)continue; /* skip own group */
-          const contentTop=g.y+GH;
+          const contentTop=g.y+lodGH;
           if(nodeCX>=g.x-SNAP_MARGIN && nodeCX<=g.x+g.w+SNAP_MARGIN && nodeCY>=contentTop-SNAP_MARGIN && nodeCY<=g.y+g.h+SNAP_MARGIN){
             hoverGid=g.id; break;
           }
@@ -2316,7 +2356,7 @@ function App(){
         if(!hoverGid && origGid){
           const g=groups.find(g=>g.id===origGid);
           if(g){
-            const contentTop=g.y+GH;
+            const contentTop=g.y+lodGH;
             if(nodeCX>=g.x-SNAP_MARGIN && nodeCX<=g.x+g.w+SNAP_MARGIN && nodeCY>=contentTop-SNAP_MARGIN && nodeCY<=g.y+g.h+SNAP_MARGIN){
               hoverGid=origGid;
             }
@@ -2330,22 +2370,22 @@ function App(){
           const tg=groups.find(g=>g.id===hoverGid);
           if(tg){
             /* Check if within the tighter SNAP_ACTIVATE zone */
-            const contentTop=tg.y+GH;
+            const contentTop=tg.y+lodGH;
             const inActivate=nodeCX>=tg.x-SNAP_ACTIVATE && nodeCX<=tg.x+tg.w+SNAP_ACTIVATE &&
                              nodeCY>=contentTop-SNAP_ACTIVATE && nodeCY<=tg.y+tg.h+SNAP_ACTIVATE;
 
             if(inActivate){
               /* Use CURSOR position (not node top-left) for slot proximity */
-              const curRelX=c.x-tg.x, curRelY=c.y-tg.y-GH;
+              const curRelX=c.x-tg.x, curRelY=c.y-tg.y-lodGH;
               /* Fix 1: clone before mutating — never touch React state directly */
               const groupNodes=nodes.filter(n=>n.gid===hoverGid && n.id!==id).map(n=>({...n}));
-              groupNodes.forEach(n=>migrateNodeGrid(n));
-              dedupeGrid(groupNodes);
-              compactGrid(groupNodes);
+              groupNodes.forEach(n=>migrateNodeGrid(n,lod));
+              dedupeGrid(groupNodes,lod);
+              compactGrid(groupNodes,lod);
               const dir=resolveEntryDirection(nodeCX,nodeCY,tg);
 
-              const snap=findInsertionSlot(dir,groupNodes,curRelX,curRelY);
-              const preview=previewExpandedSlot(snap.col,snap.row);
+              const snap=findInsertionSlot(dir,groupNodes,curRelX,curRelY,lod);
+              const preview=previewExpandedSlot(snap.col,snap.row,lod);
               /* Fix 7: store slot for mouseup reuse — ghost = drop */
               ir._lastSlot={col:snap.col,row:snap.row,gid:hoverGid};
 
@@ -2372,7 +2412,7 @@ function App(){
         setNodes(ns=>{
           const dragged=ns.find(n=>n.id===id);if(!dragged)return ns;
           const g=groups.find(g=>g.id===dragged.gid);
-          let nx=g?absNX-g.x:absNX, ny=g?absNY-g.y-GH-2:absNY;
+          let nx=g?absNX-g.x:absNX, ny=g?absNY-g.y-lodGH-2:absNY;
           return ns.map(n=>n.id===id?{...n,x:nx,y:ny}:n);
         });
         break;
@@ -2400,7 +2440,7 @@ function App(){
            Uses EP for edge padding, MIN_SPACING=20 for minimum inter-node gap. */
         const MIN_SPACING=40; /* minimum inter-node gap during resize — matches routing clearance */
         const contentMinW=2*EP+r.cols*r.nodeW+(r.cols>1?(r.cols-1)*MIN_SPACING:0);
-        const contentMinH=2*EP+r.rows*r.nodeH+(r.rows>1?(r.rows-1)*MIN_SPACING:0)+GH;
+        const contentMinH=2*EP+r.rows*r.nodeH+(r.rows>1?(r.rows-1)*MIN_SPACING:0)+LOD_DIMS[lod].gh;
         const minW=Math.max(MIN_GW,contentMinW);
         const minH=Math.max(MIN_GH,contentMinH);
         let newX=r.x,newY=r.y,newW=r.w,newH=r.h;
@@ -2412,7 +2452,7 @@ function App(){
         if(r.origNodes&&r.origNodes.length>0&&r.rows>0&&r.cols>0){
           /* Even redistribution: distribute nodes evenly across available space.
              Symmetric by design — result depends only on target dimensions, not drag side. */
-          const innerW=newW-EP*2, innerH=newH-GH-EP*2;
+          const innerW=newW-EP*2, innerH=newH-LOD_DIMS[lod].gh-EP*2;
           if(innerW>0&&innerH>0){
             /* Compute even spacing for each row/column */
             const colSpace=r.cols>1?(innerW-r.cols*r.nodeW)/(r.cols-1):Math.max(0,(innerW-r.nodeW)/2);
@@ -2433,7 +2473,7 @@ function App(){
         break;
       }
     }
-  },[toCanvas,groups,nodes,wiringFrom,portsByNode]);
+  },[toCanvas,groups,nodes,wiringFrom,portsByNode,lod]);
 
   /* ── MOUSE UP ── */
   const onMU=useCallback(e=>{
@@ -2501,8 +2541,9 @@ function App(){
         setDropTargetGroup(null); /* clear highlight */
         setSnapPreview(null); /* clear snap ghost */
         if(nd){
-          const absNX=ir.lastAbsX!=null?ir.lastAbsX:(nAbs(nd,groups).x);
-          const absNY=ir.lastAbsY!=null?ir.lastAbsY:(nAbs(nd,groups).y);
+          const lodGH=LOD_DIMS[lod].gh;
+          const absNX=ir.lastAbsX!=null?ir.lastAbsX:(nAbs(nd,groups,lod).x);
+          const absNY=ir.lastAbsY!=null?ir.lastAbsY:(nAbs(nd,groups,lod).y);
           const nodeCX=absNX+nd.w/2, nodeCY=absNY+nd.h/2;
           const SNAP_MARGIN=200;
 
@@ -2512,7 +2553,7 @@ function App(){
           /* Phase 1: OTHER groups with SNAP_MARGIN */
           for(const g of groups){
             if(g.id===ir.origGid)continue;
-            const contentTop=g.y+GH;
+            const contentTop=g.y+lodGH;
             if(nodeCX>=g.x-SNAP_MARGIN && nodeCX<=g.x+g.w+SNAP_MARGIN && nodeCY>=contentTop-SNAP_MARGIN && nodeCY<=g.y+g.h+SNAP_MARGIN){
               targetGid=g.id; break;
             }
@@ -2521,7 +2562,7 @@ function App(){
           if(!targetGid && ir.origGid){
             const g=groups.find(g=>g.id===ir.origGid);
             if(g){
-              const contentTop=g.y+GH;
+              const contentTop=g.y+lodGH;
               if(nodeCX>=g.x-SNAP_MARGIN && nodeCX<=g.x+g.w+SNAP_MARGIN && nodeCY>=contentTop-SNAP_MARGIN && nodeCY<=g.y+g.h+SNAP_MARGIN){
                 targetGid=ir.origGid;
               }
@@ -2539,36 +2580,36 @@ function App(){
           if(targetGid){
             const tg=groups.find(g=>g.id===targetGid);
             if(tg){
-              const curRelX=curX-tg.x, curRelY=curY-tg.y-GH;
+              const curRelX=curX-tg.x, curRelY=curY-tg.y-lodGH;
               /* Fix 1: clone before mutating */
               const groupNodes=nodes.filter(n=>n.gid===targetGid && n.id!==nid).map(n=>({...n}));
-              groupNodes.forEach(n=>migrateNodeGrid(n));
-              dedupeGrid(groupNodes);
-              compactGrid(groupNodes);
+              groupNodes.forEach(n=>migrateNodeGrid(n,lod));
+              dedupeGrid(groupNodes,lod);
+              compactGrid(groupNodes,lod);
 
               /* Fix 7: reuse preview slot, or recompute as fallback */
               let snap;
               if(ir._lastSlot && ir._lastSlot.gid===targetGid){
-                snap={col:ir._lastSlot.col,row:ir._lastSlot.row,...gridToPos(ir._lastSlot.col,ir._lastSlot.row)};
+                snap={col:ir._lastSlot.col,row:ir._lastSlot.row,...gridToPos(ir._lastSlot.col,ir._lastSlot.row,lod)};
               }else{
                 const dir=lockedDir||resolveEntryDirection(nodeCX,nodeCY,tg);
-                snap=findInsertionSlot(dir,groupNodes,curRelX,curRelY);
+                snap=findInsertionSlot(dir,groupNodes,curRelX,curRelY,lod);
               }
 
               const isCrossGroup=targetGid!==nd.gid;
 
-              const expanded=expandGroupForPlacement(tg,snap.col,snap.row,groups,groupNodes);
+              const expanded=expandGroupForPlacement(tg,snap.col,snap.row,groups,groupNodes,lod);
 
               /* Fix 6: post-expansion collision check */
               const safe=validateNoCollision(expanded.col,expanded.row,expanded.nodes);
-              const safePos=gridToPos(safe.col,safe.row);
+              const safePos=gridToPos(safe.col,safe.row,lod);
 
               /* Compact source group if cross-group (node is leaving) */
               let sourceCompacted=[];
               if(isCrossGroup){
                 sourceCompacted=nodes.filter(n=>n.gid===nd.gid && n.id!==nid).map(n=>({...n}));
-                sourceCompacted.forEach(n=>migrateNodeGrid(n));
-                compactGrid(sourceCompacted);
+                sourceCompacted.forEach(n=>migrateNodeGrid(n,lod));
+                compactGrid(sourceCompacted,lod);
               }
 
               setGroups(expanded.groups);
@@ -2668,8 +2709,10 @@ function App(){
         setNodes(ns=>ns.map(n=>{
           if(n.gid!==gid)return n;
           if(n.col!=null&&n.row!=null){
-            const pos=gridToPos(n.col,n.row);
-            return{...n,x:pos.x,y:pos.y};
+            const lodW=Math.min(n.w,COL_WIDTH[lod]);
+            const colOffset=(COL_WIDTH[lod]-lodW)*0.5;
+            const pos=gridToPos(n.col,n.row,lod);
+            return{...n,x:pos.x+colOffset,y:pos.y};
           }
           return n;
         }));
@@ -2680,7 +2723,7 @@ function App(){
     interRef.current=null;
     setDropTargetGroup(null);
     setSnapPreview(null);
-  },[nodes,groups,wireData,wiringFrom,wiringMouse,toCanvas,portsByNode,snapPreview]);
+  },[nodes,groups,wireData,wiringFrom,wiringMouse,toCanvas,portsByNode,snapPreview,lod]);
 
   useEffect(()=>{
     window.addEventListener('pointermove',onMM);
@@ -2715,7 +2758,7 @@ function App(){
     /* Use authoritative col/row from grid system (not inferred from positions) */
     const nodeSlots={};
     origNodes.forEach(n=>{
-      migrateNodeGrid(n); /* ensure col/row exist */
+      migrateNodeGrid(n,lod); /* ensure col/row exist */
       nodeSlots[n.id]={row:n.row,col:n.col};
     });
     const usedRows=new Set(origNodes.map(n=>n.row));
@@ -2831,14 +2874,15 @@ function App(){
     const tg=groups.find(g=>g.id===newGid);
     if(!tg)return;
     const groupNodes=nodes.filter(n=>n.gid===newGid);
-    groupNodes.forEach(n=>migrateNodeGrid(n));
-    dedupeGrid(groupNodes);
-    const snap=findInsertionSlot('right',groupNodes,EP+groupNodes.length*(NW+NG),EP);
-    const expanded=expandGroupForPlacement(tg,snap.col,snap.row,groups,groupNodes);
+    groupNodes.forEach(n=>migrateNodeGrid(n,lod));
+    dedupeGrid(groupNodes,lod);
+    const cw=COL_WIDTH[lod];
+    const snap=findInsertionSlot('right',groupNodes,LOD_DIMS[lod].ep+groupNodes.length*(cw+LOD_DIMS[lod].ng),LOD_DIMS[lod].ep,lod);
+    const expanded=expandGroupForPlacement(tg,snap.col,snap.row,groups,groupNodes,lod);
     /* Compact source group */
     const sourceNodes=nodes.filter(n=>n.gid===nd.gid && n.id!==nid);
-    sourceNodes.forEach(n=>migrateNodeGrid(n));
-    compactGrid(sourceNodes);
+    sourceNodes.forEach(n=>migrateNodeGrid(n,lod));
+    compactGrid(sourceNodes,lod);
     setGroups(expanded.groups);
     setNodes(ns=>ns.map(n=>{
       if(n.id===nid)return{...n,gid:newGid,col:expanded.col,row:expanded.row,x:expanded.slotX,y:expanded.slotY};
@@ -2973,39 +3017,49 @@ function App(){
                 borderRadius:12,overflow:'hidden',pointerEvents:'auto',
                 transition:'border 0.15s, box-shadow 0.15s',
                 boxShadow:gShadow}}>
-                <div data-gh={g.id} style={{height:GH,background:t.headerBg,display:'flex',
-                  alignItems:'center',padding:'0 30px',cursor:'grab',userSelect:'none',borderRadius:'12px 12px 0 0'}}>
-                  <div style={{width:14,height:14,borderRadius:7,background:t.accent,
-                    boxShadow:`0 0 8px ${t.accent}88`,marginRight:14,flexShrink:0}}/>
-                  <span style={{fontSize:22,fontWeight:700,letterSpacing:2,color:t.text,textTransform:'uppercase',flex:1}}>
-                    {gp?gp.label:g.label}</span>
-                  <div style={{display:'flex',gap:14,alignItems:'center'}}>
-                    <button onClick={e=>{e.stopPropagation();addNode(g.id)}} style={{
-                      background:t.accent+'22',border:`2px solid ${t.accent}88`,borderRadius:8,
-                      color:t.text,fontSize:28,padding:'14px 32px',cursor:'pointer',fontWeight:700,
-                      lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',
-                      opacity:0.85,transition:'opacity 0.15s, background 0.15s'}}
-                      onMouseEnter={e=>{e.target.style.opacity='1';e.target.style.background=t.accent+'44'}}
-                      onMouseLeave={e=>{e.target.style.opacity='0.85';e.target.style.background=t.accent+'22'}}>+ Node</button>
-                    <button onClick={e=>{e.stopPropagation();editGroup(g.id)}}
-                      onMouseDown={e=>e.stopPropagation()}
-                      style={{background:t.accent+'22',border:`2px solid ${t.accent}88`,borderRadius:8,
-                        color:t.text,fontSize:28,cursor:'pointer',padding:'14px 18px',fontWeight:700,
+                {(()=>{
+                  const ghH=LOD_DIMS[lod].gh;
+                  const ghPad=lod==='strip'?'0 12px':lod==='minimal'?'0 18px':lod==='compact'?'0 24px':'0 30px';
+                  const ghFs=lod==='strip'?12:lod==='minimal'?16:lod==='compact'?20:22;
+                  const dotSz=lod==='strip'?8:lod==='minimal'?10:14;
+                  const showAddEdit=lod==='full'||lod==='compact';
+                  const showClose=lod!=='strip';
+                  return <div data-gh={g.id} style={{height:ghH,background:t.headerBg,display:'flex',
+                    alignItems:'center',padding:ghPad,cursor:'grab',userSelect:'none',borderRadius:'12px 12px 0 0'}}>
+                    <div style={{width:dotSz,height:dotSz,borderRadius:dotSz/2,background:t.accent,
+                      boxShadow:`0 0 8px ${t.accent}88`,marginRight:dotSz,flexShrink:0}}/>
+                    <span style={{fontSize:ghFs,fontWeight:700,letterSpacing:2,color:t.text,textTransform:'uppercase',flex:1,
+                      overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      {gp?gp.label:g.label}</span>
+                    <div style={{display:'flex',gap:lod==='compact'?10:14,alignItems:'center'}}>
+                      {showAddEdit&&<button onClick={e=>{e.stopPropagation();addNode(g.id)}} style={{
+                        background:t.accent+'22',border:`2px solid ${t.accent}88`,borderRadius:8,
+                        color:t.text,fontSize:lod==='compact'?22:28,padding:lod==='compact'?'10px 24px':'14px 32px',cursor:'pointer',fontWeight:700,
                         lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',
                         opacity:0.85,transition:'opacity 0.15s, background 0.15s'}}
-                      onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'44'}}
-                      onMouseLeave={e=>{e.currentTarget.style.opacity='0.85';e.currentTarget.style.background=t.accent+'22'}}
-                      title="Edit group"><span style={{display:'inline-block',transform:'scaleX(-1)'}}>✎</span></button>
-                    <button onClick={e=>{e.stopPropagation();setGroupMenu({gid:g.id})}}
-                      onMouseDown={e=>e.stopPropagation()}
-                      style={{background:t.accent+'22',border:`2px solid ${t.accent}88`,color:t.text,
-                        fontSize:28,cursor:'pointer',padding:'14px 18px',lineHeight:1,
-                        display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8,
-                        fontWeight:700,opacity:0.85,transition:'opacity 0.15s, background 0.15s'}}
-                      onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'44'}}
-                      onMouseLeave={e=>{e.currentTarget.style.opacity='0.85';e.currentTarget.style.background=t.accent+'22'}}>✕</button>
-                  </div>
-                </div>
+                        onMouseEnter={e=>{e.target.style.opacity='1';e.target.style.background=t.accent+'44'}}
+                        onMouseLeave={e=>{e.target.style.opacity='0.85';e.target.style.background=t.accent+'22'}}>+ Node</button>}
+                      {showAddEdit&&<button onClick={e=>{e.stopPropagation();editGroup(g.id)}}
+                        onMouseDown={e=>e.stopPropagation()}
+                        style={{background:t.accent+'22',border:`2px solid ${t.accent}88`,borderRadius:8,
+                          color:t.text,fontSize:lod==='compact'?22:28,cursor:'pointer',padding:lod==='compact'?'10px 14px':'14px 18px',fontWeight:700,
+                          lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',
+                          opacity:0.85,transition:'opacity 0.15s, background 0.15s'}}
+                        onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'44'}}
+                        onMouseLeave={e=>{e.currentTarget.style.opacity='0.85';e.currentTarget.style.background=t.accent+'22'}}
+                        title="Edit group"><span style={{display:'inline-block',transform:'scaleX(-1)'}}>✎</span></button>}
+                      {showClose&&<button onClick={e=>{e.stopPropagation();setGroupMenu({gid:g.id})}}
+                        onMouseDown={e=>e.stopPropagation()}
+                        style={{background:t.accent+'22',border:`2px solid ${t.accent}88`,color:t.text,
+                          fontSize:lod==='compact'?22:lod==='minimal'?16:28,cursor:'pointer',
+                          padding:lod==='compact'?'10px 14px':lod==='minimal'?'6px 10px':'14px 18px',lineHeight:1,
+                          display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8,
+                          fontWeight:700,opacity:0.85,transition:'opacity 0.15s, background 0.15s'}}
+                        onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'44'}}
+                        onMouseLeave={e=>{e.currentTarget.style.opacity='0.85';e.currentTarget.style.background=t.accent+'22'}}>✕</button>}
+                    </div>
+                  </div>;
+                })()}
                 {/* Drop zone highlight overlay with directional edge indicator + snap ghost */}
                 {dropTargetGroup===g.id&&(()=>{
                   const sd=snapPreview&&snapPreview.gid===g.id?snapPreview.dir:null;
@@ -3015,13 +3069,13 @@ function App(){
                        sd==='left'?{left:0,top:0,width:6,height:'100%'}:
                        sd==='bottom'?{bottom:0,left:0,height:6,width:'100%'}:
                        {top:0,left:0,height:6,width:'100%'})}:null;
-                  return <div style={{position:'absolute',inset:0,top:GH,
+                  return <div style={{position:'absolute',inset:0,top:LOD_DIMS[lod].gh,
                     background:`${t.accent}08`,borderTop:`2px dashed ${t.accent}66`,
                     pointerEvents:'none',animation:'dropZonePulse 1.2s ease-in-out infinite',overflow:'visible'}}>
                     {edgeStyle&&<div style={edgeStyle}/>}
                     {snapPreview&&snapPreview.gid===g.id?<div style={{
                       position:'absolute',left:snapPreview.x,top:snapPreview.y,
-                      width:NW,height:NH,borderRadius:10,
+                      width:COL_WIDTH[lod],height:LOD_DIMS[lod].nh,borderRadius:10,
                       border:`2px dashed ${t.accent}88`,background:`${t.accent}11`,
                       transition:'left 0.15s ease-out, top 0.15s ease-out'}}/>:
                     <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',
@@ -3048,7 +3102,9 @@ function App(){
           const t=nodePreviewColor?{...getTheme(tier),...tintFromAccent(nodePreviewColor),accent:nodePreviewColor}
             :groupPreviewColor?{...getTheme(tier),...tintFromAccent(groupPreviewColor),accent:groupPreviewColor}
             :getTheme(tier);
-          const abs=g?nAbs(nd,groups):{x:nd.x,y:nd.y};
+          const abs=g?nAbs(nd,groups,lod):{x:nd.x,y:nd.y};
+          const lodW=Math.min(nd.w,COL_WIDTH[lod]);
+          const lodH=Math.min(nd.h,LOD_DIMS[lod].nh);
           const isErr=nd.status==='error';
           const isSel=selected===nd.id;
           const connectedToHover=hoverNode!==null&&hoverNode!==nd.id&&wires.some(w=>(w.src===hoverNode&&w.tgt===nd.id)||(w.tgt===hoverNode&&w.src===nd.id));
@@ -3063,12 +3119,202 @@ function App(){
           const sb='sb-'+t.accent.replace('#','');
           const mdl=MODELS.find(m=>m.id===nd.model)||MODELS[0];
           const nodeDelay=ni*0.04; /* stagger each node by 40ms */
+
+          /* ════════════════════════════════════════════════════════════
+             LOD RENDER FUNCTIONS — 4 discrete components, no shared logic
+             ════════════════════════════════════════════════════════════ */
+
+          /* ── renderStrip: horizontal bar — NOT a card ── */
+          const renderStrip=()=><>
+            <div data-nheader="1" style={{height:70,display:'flex',alignItems:'center',
+              gap:10,paddingLeft:18,paddingRight:12,flexShrink:0,
+              background:`linear-gradient(135deg, ${isErr?'#2a1414':t.headerBg} 0%, ${isErr?'#1a0e0e':t.nodeBg} 100%)`}}>
+              <div style={{width:12,height:12,borderRadius:6,flexShrink:0,
+                background:isErr?'#cc3333':mdl.color,
+                boxShadow:`0 0 8px ${isErr?'#cc333366':mdl.color+'55'}`}}/>
+              <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:32,fontWeight:700,
+                overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+                letterSpacing:0.5,opacity:0.9}}>{nd.label}</span>
+              <span onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
+                onMouseDown={e=>e.stopPropagation()}
+                style={{color:isErr?'#cc3333':t.accent,fontSize:24,cursor:'pointer',
+                  opacity:0.5,padding:'0 4px',lineHeight:1}}>{isErr?'⚠':'✓'}</span>
+              <span onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
+                onMouseDown={e=>e.stopPropagation()}
+                style={{color:t.text,fontSize:24,cursor:'pointer',
+                  opacity:0.4,padding:'0 4px',lineHeight:1}}>✕</span>
+            </div>
+          </>;
+
+          /* ── renderMinimal: label card — title band + blank body ── */
+          const renderMinimal=()=><>
+            <div data-nheader="1" style={{display:'flex',alignItems:'center',
+              padding:'20px 28px',gap:12,flexShrink:0,
+              background:isErr?'#2a1414':t.headerBg,
+              borderBottom:`2px solid ${isErr?'#cc333322':t.accent+'18'}`}}>
+              <div style={{width:10,height:10,borderRadius:5,flexShrink:0,
+                background:isErr?'#cc3333':t.accent,opacity:0.7}}/>
+              <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:34,fontWeight:600,
+                overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
+              {nd.auth&&<span style={{fontSize:20,fontWeight:700,background:'#d4a03022',
+                color:'#d4a030',padding:'4px 10px',borderRadius:4,letterSpacing:0.8,
+                textTransform:'uppercase',opacity:0.8}}>auth</span>}
+              {isErr&&<span style={{cursor:'default'}}
+                onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'error',x:r.right,y:r.bottom,errorInfo:nd.errorInfo})}}
+                onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
+                <span style={{fontSize:20,fontWeight:700,background:'#cc333322',
+                  color:'#ff6666',padding:'4px 10px',borderRadius:4,letterSpacing:0.8}}>err</span>
+              </span>}
+              <span onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
+                onMouseDown={e=>e.stopPropagation()}
+                style={{color:isErr?'#cc3333':t.accent,fontSize:28,cursor:'pointer',
+                  opacity:0.5,lineHeight:1}}>{isErr?'⚠':'✓'}</span>
+              <span onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
+                onMouseDown={e=>e.stopPropagation()}
+                style={{color:t.text,fontSize:28,cursor:'pointer',
+                  opacity:0.4,lineHeight:1}}>✕</span>
+            </div>
+            <div style={{flex:1,background:isErr?'#1a0e0e':t.nodeBg}}/>
+          </>;
+
+          const renderCompact=()=><>
+            <div data-nheader="1" style={{height:80,background:isErr?'#2a1414':t.headerBg,display:'flex',
+              alignItems:'center',padding:'0 32px',gap:14,
+              borderBottom:`1px solid ${isErr?'#cc333344':t.accent+'22'}`,flexShrink:0}}>
+              <div style={{width:12,height:12,borderRadius:6,flexShrink:0,
+                background:isErr?'#cc3333':t.accent,
+                boxShadow:`0 0 8px ${isErr?'#cc333388':t.accent+'88'}`}}/>
+              <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:32,fontWeight:600,overflow:'hidden',
+                textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
+              {nd.auth&&<span style={{cursor:'default'}}
+                onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'auth',x:r.right,y:r.bottom,perms:nd.authPerms||[]})}}
+                onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
+                <span style={{fontSize:22,fontWeight:700,background:'#d4a03033',
+                  color:'#d4a030',padding:'6px 14px',borderRadius:5,letterSpacing:1}}>AUTH</span>
+              </span>}
+              {isErr&&<span style={{cursor:'default'}}
+                onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'error',x:r.right,y:r.bottom,errorInfo:nd.errorInfo})}}
+                onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
+                <span style={{fontSize:22,fontWeight:700,background:'#cc333333',
+                  color:'#ff6666',padding:'6px 14px',borderRadius:5,letterSpacing:1}}>ERROR</span>
+              </span>}
+              <button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
+                onMouseDown={e=>e.stopPropagation()}
+                style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:isErr?'#cc3333':t.accent,
+                  fontSize:30,cursor:'pointer',padding:0,lineHeight:1,width:48,height:48,
+                  display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8,
+                  opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
+                onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
+                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>{isErr?'⚠':'✓'}</button>
+              <button onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
+                onMouseDown={e=>e.stopPropagation()}
+                style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:t.text,
+                  fontSize:30,cursor:'pointer',padding:0,lineHeight:1,width:48,height:48,
+                  display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8,
+                  opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
+                onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
+                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>✕</button>
+            </div>
+            {nd.h>=THRESH_MODEL&&(
+              <div style={{padding:'16px 32px',borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
+                display:'flex',alignItems:'center',gap:12,flexShrink:0,overflow:'hidden'}}>
+                <span style={{fontSize:22,fontWeight:700,color:'#aaa',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <div style={{width:12,height:12,borderRadius:6,background:mdl.color,flexShrink:0}}/>
+                  <span style={{fontSize:22,color:'#ccc'}}>{mdl.label}</span>
+                  <span style={{fontSize:16,color:'#777',marginLeft:4}}>{mdl.cost}</span>
+                </div>
+              </div>
+            )}
+            {nd.h>=THRESH_PROMPT_BODY?
+              <div style={{flex:1,margin:'0 32px',padding:'12px 0',overflow:'hidden'}}>
+                <div style={{fontSize:24,lineHeight:1.35,color:isErr?'#cc9999':t.text+'aa',
+                  overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.prompt}</div>
+              </div>
+              :<div style={{flex:1,background:isErr?'#2a1414':t.nodeBg}}/>}
+          </>;
+
+          const renderFull=()=>{
+            const compact=nd.w<THRESH_WIDTH_COMPACT;
+            const pad=compact?'16px 20px':'22px 32px';
+            const mx=compact?20:32;
+            return <>
+            <div data-nheader="1" style={{height:80,background:isErr?'#2a1414':t.headerBg,display:'flex',
+              alignItems:'center',padding:'0 32px',gap:14,
+              borderBottom:`1px solid ${isErr?'#cc333344':t.accent+'22'}`,flexShrink:0}}>
+              <div style={{width:12,height:12,borderRadius:6,flexShrink:0,
+                background:isErr?'#cc3333':t.accent,
+                boxShadow:`0 0 8px ${isErr?'#cc333388':t.accent+'88'}`}}/>
+              <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:28,fontWeight:600,overflow:'hidden',
+                textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
+              {nd.auth&&<span style={{cursor:'default'}}
+                onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'auth',x:r.right,y:r.bottom,perms:nd.authPerms||[]})}}
+                onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
+                <span style={{fontSize:20,fontWeight:700,background:'#d4a03033',
+                  color:'#d4a030',padding:'6px 14px',borderRadius:5,letterSpacing:1}}>AUTH</span>
+              </span>}
+              {isErr&&<span style={{cursor:'default'}}
+                onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'error',x:r.right,y:r.bottom,errorInfo:nd.errorInfo})}}
+                onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
+                <span style={{fontSize:20,fontWeight:700,background:'#cc333333',
+                  color:'#ff6666',padding:'6px 14px',borderRadius:5,letterSpacing:1}}>ERROR</span>
+              </span>}
+              <button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
+                onMouseDown={e=>e.stopPropagation()}
+                style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:isErr?'#cc3333':t.accent,
+                  fontSize:28,cursor:'pointer',padding:0,lineHeight:1,width:44,height:44,
+                  display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8,
+                  opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
+                onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
+                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>{isErr?'⚠':'✓'}</button>
+              <button onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
+                onMouseDown={e=>e.stopPropagation()}
+                style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:t.text,
+                  fontSize:28,cursor:'pointer',padding:0,lineHeight:1,width:44,height:44,
+                  display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8,
+                  opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
+                onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
+                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>✕</button>
+            </div>
+            {nd.h>=THRESH_MODEL&&(
+              <div style={{padding:pad,borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
+                display:'flex',alignItems:'center',gap:16,flexShrink:0,overflow:'hidden'}}>
+                <span style={{fontSize:20,fontWeight:700,color:'#aaa',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <div style={{width:12,height:12,borderRadius:6,background:mdl.color,flexShrink:0}}/>
+                  <span style={{fontSize:20,color:'#ccc'}}>{mdl.label}</span>
+                  <span style={{fontSize:16,color:'#777',marginLeft:4}}>{mdl.cost}</span>
+                </div>
+              </div>
+            )}
+            {nd.h>=THRESH_PROMPT_LABEL&&(
+              <div style={{padding:compact?'18px 20px 0':'26px 32px 0',flexShrink:0,overflow:'hidden'}}>
+                <span style={{fontSize:20,fontWeight:700,color:'#aaa',letterSpacing:1.5,
+                  textTransform:'uppercase',display:'block'}}>BEHAVIOUR PROMPT</span>
+              </div>
+            )}
+            {nd.h>=THRESH_PROMPT_BODY&&(()=>{
+              const lineH=Math.ceil(26*1.35);
+              const threeLines=lineH*3;
+              const isDefault=nd.h<=NH;
+              return <div className={sb} data-node-scroll="1"
+                style={{flex:isDefault?'none':1,height:isDefault?threeLines:undefined,
+                  minHeight:isDefault?undefined:0,
+                  overflow:'auto',margin:`0 ${mx}px`,
+                  overscrollBehavior:'contain',pointerEvents:'auto'}}>
+                <div style={{fontSize:26,lineHeight:1.35,color:isErr?'#cc9999':t.text+'cc',
+                  whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{nd.prompt}</div>
+              </div>;
+            })()}
+            </>;
+          };
+
           return(
             <div key={nd.id} data-node={nd.id}
               onMouseEnter={()=>setHoverNode(nd.id)}
               onMouseLeave={()=>setHoverNode(h=>h===nd.id?null:h)}
               style={{
-              position:'absolute',left:abs.x,top:abs.y,width:nd.w,height:nd.h,
+              position:'absolute',left:abs.x,top:abs.y,width:lodW,height:lodH,
               background:isErr?'#1a1212':t.nodeBg,
               border:isErr?'2px solid #cc3333':(isSel||hoverNode===nd.id)?'1px solid transparent':`1px solid ${t.accent+'33'}`,
               borderRadius:8,zIndex:isSel?18:12,pointerEvents:'auto',
@@ -3085,103 +3331,26 @@ function App(){
               {(hoverNode===nd.id||isSel||connectedToHover||connectedToSel)&&!isErr&&(()=>{
                 const intense=isSel||connectedToSel;
                 const pad=10;
-                return <svg style={{position:'absolute',left:-pad,top:-pad,width:nd.w+pad*2,height:nd.h+pad*2,pointerEvents:'none',zIndex:30,overflow:'visible'}}>
+                return <svg style={{position:'absolute',left:-pad,top:-pad,width:lodW+pad*2,height:lodH+pad*2,pointerEvents:'none',zIndex:30,overflow:'visible'}}>
                   {/* solid cable */}
-                  <rect x={pad} y={pad} width={nd.w} height={nd.h} rx="8" ry="8"
+                  <rect x={pad} y={pad} width={lodW} height={lodH} rx="8" ry="8"
                     fill="none" stroke={t.accent} strokeWidth="3.5"
                     strokeOpacity="0.55"/>
                   {/* flowing beads */}
-                  <rect x={pad} y={pad} width={nd.w} height={nd.h} rx="8" ry="8"
+                  <rect x={pad} y={pad} width={lodW} height={lodH} rx="8" ry="8"
                     fill="none" stroke={t.accent} strokeWidth="5"
                     strokeDasharray="6 20" strokeLinecap="round" opacity="0.8"
                     className="node-border-flow"/>
                 </svg>;
               })()}
 
-              {/* INNER CONTENT (clipped for border radius) */}
+              {/* INNER CONTENT — LOD dispatch */}
               <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',borderRadius:7}}>
-                {/* HEADER — drag handle for moving */}
-                <div data-nheader="1" style={{height:80,background:isErr?'#2a1414':t.headerBg,display:'flex',
-                  alignItems:'center',padding:'0 32px',gap:14,
-                  borderBottom:`1px solid ${isErr?'#cc333344':t.accent+'22'}`,flexShrink:0}}>
-                  <div style={{width:12,height:12,borderRadius:6,flexShrink:0,
-                    background:isErr?'#cc3333':t.accent,
-                    boxShadow:`0 0 8px ${isErr?'#cc333388':t.accent+'88'}`}}/>
-                  <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:28,fontWeight:600,overflow:'hidden',
-                    textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
-                  {nd.auth&&<span style={{cursor:'default'}}
-                    onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'auth',x:r.right,y:r.bottom,perms:nd.authPerms||[]})}}
-                    onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
-                    <span style={{fontSize:20,fontWeight:700,background:'#d4a03033',
-                      color:'#d4a030',padding:'6px 14px',borderRadius:5,letterSpacing:1}}>AUTH</span>
-                  </span>}
-                  {isErr&&<span style={{cursor:'default'}}
-                    onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'error',x:r.right,y:r.bottom,errorInfo:nd.errorInfo})}}
-                    onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
-                    <span style={{fontSize:20,fontWeight:700,background:'#cc333333',
-                      color:'#ff6666',padding:'6px 14px',borderRadius:5,letterSpacing:1}}>ERROR</span>
-                  </span>}
-                  <button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
-                    onMouseDown={e=>e.stopPropagation()}
-                    style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:isErr?'#cc3333':t.accent,
-                      fontSize:28,cursor:'pointer',padding:0,lineHeight:1,width:44,height:44,
-                      display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8,
-                      opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
-                    onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
-                    onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>{isErr?'⚠':'✓'}</button>
-                  <button onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
-                    onMouseDown={e=>e.stopPropagation()}
-                    style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:t.text,
-                      fontSize:28,cursor:'pointer',padding:0,lineHeight:1,width:44,height:44,
-                      display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8,
-                      opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
-                    onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
-                    onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>✕</button>
-                </div>
-
-                {/* Body — progressive collapse: prompt body → prompt label → model → header only */}
-                {(()=>{
-                  const compact=nd.w<THRESH_WIDTH_COMPACT;
-                  const pad=compact?'16px 20px':'22px 32px';
-                  const padLabel=compact?'18px 20px 0':'26px 32px 0';
-                  const mx=compact?20:32;
-                  return <>
-                {/* MODEL ROW — hides below THRESH_MODEL (3rd to collapse) */}
-                {!simplified&&nd.h>=THRESH_MODEL&&(
-                  <div style={{padding:pad,borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
-                    display:'flex',alignItems:'center',gap:16,flexShrink:0,cursor:'pointer',
-                    transition:'opacity 0.2s, max-height 0.2s',overflow:'hidden'}}>
-                    <span style={{fontSize:20,fontWeight:700,color:'#aaa',letterSpacing:1.5,textTransform:'uppercase'}}>MODEL</span>
-                    <ModelDropdown value={nd.model}
-                      onChange={v=>updateNode(nd.id,{model:v})}
-                      models={MODELS} nodeBg={t.nodeBg} accent={t.accent} color={mdl.color} zoom={zoom}/>
-                  </div>
-                )}
-                {/* BEHAVIOUR PROMPT label — hides below THRESH_PROMPT_LABEL (2nd to collapse) */}
-                {!simplified&&nd.h>=THRESH_PROMPT_LABEL&&(
-                  <div style={{padding:padLabel,flexShrink:0,transition:'opacity 0.2s, max-height 0.2s',overflow:'hidden'}}>
-                    <span style={{fontSize:20,fontWeight:700,color:'#aaa',letterSpacing:1.5,marginBottom:14,
-                      textTransform:'uppercase',display:'block'}}>BEHAVIOUR PROMPT</span>
-                  </div>
-                )}
-                {/* Prompt text body — hides below THRESH_PROMPT_BODY (1st to collapse) */}
-                {!simplified&&nd.h>=THRESH_PROMPT_BODY&&(()=>{
-                  const lineH=Math.ceil(26*1.35);
-                  const threeLines=lineH*3;
-                  const isDefault=nd.h<=NH;
-                  return <div className={sb} data-node-scroll="1"
-                    style={{flex:isDefault?'none':1,height:isDefault?threeLines:undefined,
-                      minHeight:isDefault?undefined:0,
-                      overflow:'auto',margin:`0 ${mx}px`,
-                      overscrollBehavior:'contain',pointerEvents:'auto',
-                      transition:'opacity 0.2s, max-height 0.2s'}}>
-                    <div style={{fontSize:26,lineHeight:1.35,color:isErr?'#cc9999':t.text+'cc',
-                      whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{nd.prompt}</div>
-                  </div>;
-                })()}
-                </>;
-                })()}
-              </div>
+              {lod==='strip'?renderStrip()
+                :lod==='minimal'?renderMinimal()
+                :lod==='compact'?renderCompact()
+                :renderFull()}
+              </div>{/* /inner content */}
 
               {/* PORTS — positioned from immutable port definitions */}
               {(()=>{
@@ -3378,11 +3547,11 @@ function App(){
             return <div key={i} style={{position:'relative'}}
               onMouseEnter={e=>{const t=e.currentTarget.querySelector('.zoom-tip');if(t){t.style.opacity='1';t.style.transform='translateY(-50%) translateX(0)'}}}
               onMouseLeave={e=>{const t=e.currentTarget.querySelector('.zoom-tip');if(t){t.style.opacity='0';t.style.transform='translateY(-50%) translateX(-4px)'}}}>
-              <input type="text" value={Math.round(zoom*100)+'%'}
+              <input type="text" value={Math.round(zoom/ZOOM_BASELINE*100)+'%'}
                 onChange={e=>{
                   const raw=e.target.value.replace(/[^0-9]/g,'');
                   const v=parseInt(raw,10);
-                  if(!isNaN(v))setZoom(clamp(v/100,0.1,2));
+                  if(!isNaN(v))setZoom(clamp(v/100*ZOOM_BASELINE,0.1,2));
                 }}
                 onKeyDown={e=>{if(e.key==='Enter')e.target.blur()}}
                 onFocus={e=>e.target.select()}
@@ -3570,7 +3739,7 @@ function App(){
                 tierMap[tid]=tid;
                 setNodes(ns=>ns.map(n=>{
                   if(n.gid!==gm.gid)return n;
-                  const abs=nAbs(n,groups);
+                  const abs=nAbs(n,groups,lod);
                   return{...n,gid:tid,x:abs.x,y:abs.y};
                 }));
                 setGroups(gs=>gs.filter(gg=>gg.id!==gm.gid));
@@ -3767,7 +3936,7 @@ function App(){
             };
             setNodes(ns=>ns.map(n=>{
               if(n.gid!==ge.gid)return n;
-              const abs=nAbs(n,groups);
+              const abs=nAbs(n,groups,lod);
               const color=(pnc&&pnc[n.id])||globalColor;
               return{...n,gid:getOrCreateTier(color),x:abs.x,y:abs.y};
             }));
@@ -3837,12 +4006,12 @@ function App(){
           const ports={top:[{id:id+':t0'}],bottom:[{id:id+':b0'}],right:[{id:id+':r0'}],left:[{id:id+':l0'}]};
           /* Grid-based placement — insert at right edge, expand group if needed */
           const groupNodes=nodes.filter(n=>n.gid===targetGid);
-          groupNodes.forEach(n=>migrateNodeGrid(n));
-          dedupeGrid(groupNodes);
+          groupNodes.forEach(n=>migrateNodeGrid(n,lod));
+          dedupeGrid(groupNodes,lod);
           const tg=groups.find(g=>g.id===targetGid);
-          const snap=findInsertionSlot('right',groupNodes,EP+groupNodes.length*(NW+NG),EP);
+          const snap=findInsertionSlot('right',groupNodes,LOD_DIMS[lod].ep+groupNodes.length*(COL_WIDTH[lod]+LOD_DIMS[lod].ng),LOD_DIMS[lod].ep,lod);
           if(tg){
-            const expanded=expandGroupForPlacement(tg,snap.col,snap.row,groups,groupNodes);
+            const expanded=expandGroupForPlacement(tg,snap.col,snap.row,groups,groupNodes,lod);
             setGroups(expanded.groups);
             setNodes(ns=>{
               let updated=ns.map(n=>{
@@ -3853,7 +4022,7 @@ function App(){
               return[...updated,{id,gid:targetGid,label:w.name.trim(),col:expanded.col,row:expanded.row,x:expanded.slotX,y:expanded.slotY,w:NW,h:NH,model:w.model,status:'ok',auth:false,prompt,ports}];
             });
           }else{
-            const pos=gridToPos(snap.col,snap.row);
+            const pos=gridToPos(snap.col,snap.row,lod);
             setNodes(ns=>[...ns,{id,gid:targetGid,label:w.name.trim(),col:snap.col,row:snap.row,x:pos.x,y:pos.y,w:NW,h:NH,model:w.model,status:'ok',auth:false,prompt,ports}]);
           }
           setWizard(null);
