@@ -2385,8 +2385,10 @@ function App(){
         const prevLD=getDims(prevZoom);
         const xPrev=prevLD.cw+prevLD.ng;
         const xNew=ld.cw+ld.ng;
-        const yPrev=prevLD.nh+prevLD.vg;
-        const yNew=ld.nh+ld.vg;
+        /* Y scale based on representative group height (2*ep+nh+gh) so that
+           gaps between groups maintain consistent visual proportion */
+        const yPrev=2*prevLD.ep+prevLD.nh+prevLD.gh;
+        const yNew=2*ld.ep+ld.nh+ld.gh;
         if(Math.abs(xPrev-xNew)>1||Math.abs(yPrev-yNew)>1){
           const xScale=xNew/xPrev;
           const yScale=yNew/yPrev;
