@@ -3303,31 +3303,35 @@ function App(){
                 transition:'border 0.15s, box-shadow 0.15s',
                 boxShadow:gShadow}}>
                 {(()=>{
-                  const ghH=getDims(zoom).gh;
-                  const ghPad=lod==='strip'?'0 12px':lod==='minimal'?'0 18px':lod==='compact'?'0 24px':'0 30px';
-                  const ghFs=lod==='strip'?12:lod==='minimal'?16:lod==='compact'?20:22;
-                  const dotSz=lod==='strip'?8:lod==='minimal'?10:14;
+                  const _gd=getDims(zoom);
+                  const ghH=_gd.gh;
+                  const gfs=_gd.fs||1, gpd=_gd.pd||1;
+                  const P=Math.round;
+                  const ghPadV=P(30*gpd), ghFs=P(22*gfs), dotSz=P(14*gfs);
+                  const btnFs=P(28*gfs), btnPad=`${P(14*gpd)}px ${P(32*gpd)}px`;
+                  const btnPadSm=`${P(14*gpd)}px ${P(18*gpd)}px`;
+                  const btnBr=P(8*gpd), btnGap=P(14*gpd);
                   const showAddEdit=lod==='full'||lod==='compact';
                   const showClose=lod!=='strip';
                   return <div data-gh={g.id} style={{height:ghH,background:t.headerBg,display:'flex',
-                    alignItems:'center',padding:ghPad,cursor:'grab',userSelect:'none',borderRadius:'12px 12px 0 0'}}>
+                    alignItems:'center',padding:`0 ${ghPadV}px`,cursor:'grab',userSelect:'none',borderRadius:'12px 12px 0 0'}}>
                     <div style={{width:dotSz,height:dotSz,borderRadius:dotSz/2,background:t.accent,
-                      boxShadow:`0 0 8px ${t.accent}88`,marginRight:dotSz,flexShrink:0}}/>
-                    <span style={{fontSize:ghFs,fontWeight:700,letterSpacing:2,color:t.text,textTransform:'uppercase',flex:1,
+                      boxShadow:`0 0 ${P(8*gfs)}px ${t.accent}88`,marginRight:dotSz,flexShrink:0}}/>
+                    <span style={{fontSize:ghFs,fontWeight:700,letterSpacing:P(2*gfs),color:t.text,textTransform:'uppercase',flex:1,
                       overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
                       {gp?gp.label:g.label}</span>
-                    <div style={{display:'flex',gap:lod==='compact'?10:14,alignItems:'center'}}>
+                    <div style={{display:'flex',gap:btnGap,alignItems:'center'}}>
                       {showAddEdit&&<button onClick={e=>{e.stopPropagation();addNode(g.id)}} style={{
-                        background:t.accent+'22',border:`2px solid ${t.accent}88`,borderRadius:8,
-                        color:t.text,fontSize:lod==='compact'?22:28,padding:lod==='compact'?'10px 24px':'14px 32px',cursor:'pointer',fontWeight:700,
+                        background:t.accent+'22',border:`${P(2*gpd)}px solid ${t.accent}88`,borderRadius:btnBr,
+                        color:t.text,fontSize:btnFs,padding:btnPad,cursor:'pointer',fontWeight:700,
                         lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',
                         opacity:0.85,transition:'opacity 0.15s, background 0.15s'}}
                         onMouseEnter={e=>{e.target.style.opacity='1';e.target.style.background=t.accent+'44'}}
                         onMouseLeave={e=>{e.target.style.opacity='0.85';e.target.style.background=t.accent+'22'}}>+ Node</button>}
                       {showAddEdit&&<button onClick={e=>{e.stopPropagation();editGroup(g.id)}}
                         onMouseDown={e=>e.stopPropagation()}
-                        style={{background:t.accent+'22',border:`2px solid ${t.accent}88`,borderRadius:8,
-                          color:t.text,fontSize:lod==='compact'?22:28,cursor:'pointer',padding:lod==='compact'?'10px 14px':'14px 18px',fontWeight:700,
+                        style={{background:t.accent+'22',border:`${P(2*gpd)}px solid ${t.accent}88`,borderRadius:btnBr,
+                          color:t.text,fontSize:btnFs,cursor:'pointer',padding:btnPadSm,fontWeight:700,
                           lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center',
                           opacity:0.85,transition:'opacity 0.15s, background 0.15s'}}
                         onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'44'}}
@@ -3335,10 +3339,9 @@ function App(){
                         title="Edit group"><span style={{display:'inline-block',transform:'scaleX(-1)'}}>✎</span></button>}
                       {showClose&&<button onClick={e=>{e.stopPropagation();setGroupMenu({gid:g.id})}}
                         onMouseDown={e=>e.stopPropagation()}
-                        style={{background:t.accent+'22',border:`2px solid ${t.accent}88`,color:t.text,
-                          fontSize:lod==='compact'?22:lod==='minimal'?16:28,cursor:'pointer',
-                          padding:lod==='compact'?'10px 14px':lod==='minimal'?'6px 10px':'14px 18px',lineHeight:1,
-                          display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8,
+                        style={{background:t.accent+'22',border:`${P(2*gpd)}px solid ${t.accent}88`,color:t.text,
+                          fontSize:btnFs,cursor:'pointer',padding:btnPadSm,lineHeight:1,
+                          display:'flex',alignItems:'center',justifyContent:'center',borderRadius:btnBr,
                           fontWeight:700,opacity:0.85,transition:'opacity 0.15s, background 0.15s'}}
                         onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'44'}}
                         onMouseLeave={e=>{e.currentTarget.style.opacity='0.85';e.currentTarget.style.background=t.accent+'22'}}>✕</button>}
