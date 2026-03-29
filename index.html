@@ -405,6 +405,10 @@ function computePortPositions(wires,nodes,groups,sideAssign,nodeSizes,lod){
   const portPositions={};
   const portsByNode={};
   nodeSizes=nodeSizes||{};
+  /* Counter-scale port spacing so ports stay clickable at low zoom */
+  const _dims=typeof lod==='number'?getDims(lod):null;
+  const portFs=_dims?Math.min(_dims.fs,2.5):1;
+  const portSep=Math.max(PORT_SEP,Math.round(20*portFs*1.8));
 
   /* Build connected set */
   const connectedPorts=new Set();
@@ -455,7 +459,7 @@ function computePortPositions(wires,nodes,groups,sideAssign,nodeSizes,lod){
       const count=portsOnSide.length;
       const slots=[];
       for(let i=0;i<count;i++){
-        const offset=(i-(count-1)/2)*PORT_SEP;
+        const offset=(i-(count-1)/2)*portSep;
         const pos=portAt(abs,nw,nh,side,offset);
         const pid=portsOnSide[i].id;
         portPositions[pid]={x:pos.x,y:pos.y,side,nodeId:nd.id};
@@ -3658,7 +3662,12 @@ function App(){
                 const isW=wiringFrom!==null;
                 const isTarget=isW&&wiringFrom.nid!==nd.id;
                 const glow=isErr?'#cc3333':t.accent;
-                const HIT=50;
+                const P=Math.round;
+                /* Counter-scale port visuals so they stay clickable at low zoom */
+                const pfs=Math.min(fs,2.5);
+                const HIT=P(50*pfs);
+                const pOuter=P(20*pfs), pInner=P(8*pfs), pBorder=P(3*pfs);
+                const pGlow=P(8*pfs);
                 const nodePortData=portsByNode[nd.id]||{};
                 const ports=[];
                 SIDES.forEach(side=>{
@@ -3676,15 +3685,15 @@ function App(){
                           width:HIT,height:HIT,borderRadius:HIT/2,
                           cursor:'crosshair',zIndex:35,display:'flex',alignItems:'center',
                           justifyContent:'center',pointerEvents:'auto'}}>
-                        <div style={{width:20,height:20,borderRadius:10,
-                          border:`3px solid ${col}`,
+                        <div style={{width:pOuter,height:pOuter,borderRadius:pOuter/2,
+                          border:`${pBorder}px solid ${col}`,
                           background:isConn?col+'22':(isW?col+'33':'transparent'),
                           display:'flex',alignItems:'center',justifyContent:'center',
-                          boxShadow:isConn?`0 0 8px ${glow}44`:'none',
+                          boxShadow:isConn?`0 0 ${pGlow}px ${glow}44`:'none',
                           animation:(!isConn&&isTarget)?'portPulse 1s ease infinite':'none',
                           pointerEvents:'none',
                         }}>
-                          <div style={{width:8,height:8,borderRadius:4,background:col,
+                          <div style={{width:pInner,height:pInner,borderRadius:pInner/2,background:col,
                             pointerEvents:'none'}}/>
                         </div>
                       </div>
@@ -3699,19 +3708,31 @@ function App(){
         })}
 
         {/* SVG WIRE LAYER */}
-        <svg style={{position:'absolute',left:0,top:0,width:1,height:1,
+        {(()=>{
+          /* Counter-scale wire thickness so wires stay visible at low zoom */
+          const _wd=getDims(zoom);
+          const wfs=Math.min(_wd.fs,2.5);
+          const wMain=Math.round(3.5*wfs*10)/10;
+          const wShadow=Math.round(8*wfs);
+          const wHit=Math.round(28*wfs);
+          const wFlow=Math.round(4*wfs);
+          const wDie=Math.round(4*wfs);
+          /* Marker sizes scale with wfs to match wire proportions */
+          const mW=Math.round(10*wfs), mH=Math.round(8*wfs);
+          const mRef=Math.round(10*wfs), mMid=Math.round(4*wfs);
+          return <svg style={{position:'absolute',left:0,top:0,width:1,height:1,
           zIndex:5,pointerEvents:'none',overflow:'visible',
           opacity:loadPhase>=3?1:0,
           animation:loadPhase>=3&&loadPhase<4?'wireFadeIn 0.6s ease-out forwards':'none'}}>
           <defs>
-            <marker id="arr" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
-              <path d="M0,0 L10,4 L0,8" fill="#666" stroke="none"/></marker>
-            <marker id="arr-e" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
-              <path d="M0,0 L10,4 L0,8" fill="#cc3333" stroke="none"/></marker>
+            <marker id="arr" markerWidth={mW} markerHeight={mH} refX={mRef} refY={mMid} orient="auto" markerUnits="userSpaceOnUse">
+              <path d={`M0,0 L${mRef},${mMid} L0,${mH}`} fill="#666" stroke="none"/></marker>
+            <marker id="arr-e" markerWidth={mW} markerHeight={mH} refX={mRef} refY={mMid} orient="auto" markerUnits="userSpaceOnUse">
+              <path d={`M0,0 L${mRef},${mMid} L0,${mH}`} fill="#cc3333" stroke="none"/></marker>
             {/* Per-color arrow markers so each wire's arrowhead matches its color */}
             {[...new Set(wireData.map(w=>w.accent))].map(c=>(
-              <marker key={'arr-'+c} id={'arr-'+c.replace('#','')} markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
-                <path d="M0,0 L10,4 L0,8" fill={c} stroke="none"/></marker>
+              <marker key={'arr-'+c} id={'arr-'+c.replace('#','')} markerWidth={mW} markerHeight={mH} refX={mRef} refY={mMid} orient="auto" markerUnits="userSpaceOnUse">
+                <path d={`M0,0 L${mRef},${mMid} L0,${mH}`} fill={c} stroke="none"/></marker>
             ))}
             <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/>
               <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
@@ -3719,7 +3740,7 @@ function App(){
 
           {/* DYING WIRES (retract animation) */}
           {dyingWires.map((dw,i)=>(
-            <path key={'die-'+i} d={dw.path} fill="none" stroke="#cc3333" strokeWidth="4"
+            <path key={'die-'+i} d={dw.path} fill="none" stroke="#cc3333" strokeWidth={wDie}
               className="wire-dying" strokeLinecap="round" strokeDasharray="1000"/>
           ))}
 
@@ -3742,7 +3763,7 @@ function App(){
             const anyActive=anyHov||hoverNode!==null||selected!==null||selectedGroup!==null;
             const dim=anyActive&&!lit;
             const mainOpacity=wd.isErr?0.7:dim?0.03:0.55;
-            const mainWidth=wd.isErr?3.5:3.5;
+            const mainWidth=wMain;
             const flowOpacity=dim?0.03:0.8;
             return(
             <g key={wd.i}
@@ -3750,16 +3771,16 @@ function App(){
               onMouseLeave={()=>setHoverWire(h=>h===wd.i?null:h)}>
               {/* subtle shadow — brighter on hover */}
               <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent}
-                strokeWidth="8" opacity={dim?0.005:0.06}
+                strokeWidth={wShadow} opacity={dim?0.005:0.06}
                 pointerEvents="none" strokeLinecap="round"/>
               {/* wide invisible hit area for hover detection */}
-              <path d={wd.path} fill="none" stroke="transparent" strokeWidth="28"
+              <path d={wd.path} fill="none" stroke="transparent" strokeWidth={wHit}
                 style={{pointerEvents:'stroke',cursor:'pointer'}}
                 data-wire={wd.i}/>
               {/* main cable */}
               <path d={wd.path} fill="none" stroke={wd.isErr?'#cc3333':wd.accent}
                 strokeWidth={mainWidth}
-                strokeDasharray={wd.isErr?'6 4':'none'} strokeOpacity={mainOpacity}
+                strokeDasharray={wd.isErr?`${Math.round(6*wfs)} ${Math.round(4*wfs)}`:'none'} strokeOpacity={mainOpacity}
                 markerEnd={dim?'none':wd.isErr?'url(#arr-e)':`url(#arr-${wd.accent.replace('#','')})`}
                 pointerEvents="none" strokeLinecap="round"
                 style={{transition:'stroke-opacity 0.15s, stroke-width 0.15s'}}/>
@@ -3771,7 +3792,7 @@ function App(){
               {/* flow particles */}
               {!wd.isErr&&(
                 <path d={wd.path} fill="none" stroke={wd.accent} className="wire-flow"
-                  strokeWidth="4" strokeDasharray="6 20" opacity={flowOpacity}
+                  strokeWidth={wFlow} strokeDasharray={`${Math.round(6*wfs)} ${Math.round(20*wfs)}`} opacity={flowOpacity}
                   strokeLinecap="round" pointerEvents="none"
                   style={{transition:'opacity 0.15s'}}/>
               )}
@@ -3792,12 +3813,12 @@ function App(){
             const path=makeSimpleBezier(pp.x,pp.y,mx,my,wiringFrom.side,tgtSide);
             return(
               <g>
-                <circle cx={pp.x} cy={pp.y} r="8" fill={accent} opacity="0.9"/>
-                <path d={path} fill="none" stroke={accent} strokeWidth="3.5" opacity="0.7"
+                <circle cx={pp.x} cy={pp.y} r={Math.round(8*wfs)} fill={accent} opacity="0.9"/>
+                <path d={path} fill="none" stroke={accent} strokeWidth={wMain} opacity="0.7"
                   strokeLinecap="round"
-                  strokeDasharray={wiringFrom.isDragDisconnect?'8 6':'none'}/>
-                <circle cx={mx} cy={my} r="7" fill={accent} opacity="0.6"
-                  stroke={accent} strokeWidth="2" strokeOpacity="0.3"/>
+                  strokeDasharray={wiringFrom.isDragDisconnect?`${Math.round(8*wfs)} ${Math.round(6*wfs)}`:'none'}/>
+                <circle cx={mx} cy={my} r={Math.round(7*wfs)} fill={accent} opacity="0.6"
+                  stroke={accent} strokeWidth={Math.round(2*wfs)} strokeOpacity="0.3"/>
               </g>
             );
           })()}
@@ -3833,7 +3854,8 @@ function App(){
             }
             return marks;
           })()}
-        </svg>
+        </svg>;
+        })()}
       </div>
 
       {/* ZOOM CONTROLS */}
