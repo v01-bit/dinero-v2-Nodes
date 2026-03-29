@@ -2379,9 +2379,23 @@ function App(){
       const zoomChanged=prevZoom!==null&&Math.abs(prevZoom-zoom)>0.001;
       lastCascadeZoomRef.current=zoom;
       if(zoomChanged&&fitted.length>0){
-        /* Zoom changed — repack groups vertically with ld.gap spacing.
-           X positions are NEVER changed — only user dragging changes X.
-           This prevents gaps from inflating/deflating on zoom transitions. */
+        /* Zoom changed — repack groups with LOD-proportional spacing.
+           X positions scale proportionally to LOD unit width so that
+           visual gaps maintain consistent ratio to group widths.
+           Y positions cascade tightly with ld.gap spacing. */
+        const prevLD=getDims(prevZoom);
+        const prevUnit=prevLD.cw+prevLD.ng;
+        const newUnit=ld.cw+ld.ng;
+        if(Math.abs(prevUnit-newUnit)>1){
+          const xScale=newUnit/prevUnit;
+          for(let i=0;i<fitted.length;i++){
+            const newX=fitted[i].x*xScale;
+            if(Math.abs(fitted[i].x-newX)>1){
+              fitted[i]={...fitted[i],x:newX};
+              changed=true;
+            }
+          }
+        }
         const sorted=[...fitted].sort((a,b)=>a.y-b.y);
         const firstTargetY=ld.ep;
         for(let i=0;i<sorted.length;i++){
