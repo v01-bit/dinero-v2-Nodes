@@ -3529,10 +3529,17 @@ function App(){
               </div>
             )}
             {nd.h>=THRESH_PROMPT_BODY?
-              <div style={{flex:1,margin:`0 ${P(32*pd)}px`,padding:`${P(12*pd)}px 0`,overflow:'hidden'}}>
-                <div style={{fontSize:P(26*fs),lineHeight:1.35,color:isErr?'#cc9999':t.text+'aa',
-                  overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.prompt}</div>
-              </div>
+              (()=>{
+                /* Show multi-line prompt until 75% display zoom (0.306),
+                   then collapse to single-line in deeper compact */
+                const multiLine=zoom>=0.306;
+                return <div style={{flex:1,margin:`0 ${P(32*pd)}px`,padding:`${P(12*pd)}px 0`,overflow:'hidden'}}>
+                  <div style={{fontSize:P(26*fs),lineHeight:1.35,color:isErr?'#cc9999':t.text+'aa',
+                    overflow:'hidden',textOverflow:'ellipsis',
+                    whiteSpace:multiLine?'pre-wrap':'nowrap',
+                    wordBreak:multiLine?'break-word':'normal'}}>{nd.prompt}</div>
+                </div>;
+              })()
               :<div style={{flex:1,background:isErr?'#2a1414':t.nodeBg}}/>}
           </>};
 
