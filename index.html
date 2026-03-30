@@ -198,6 +198,15 @@ function getDims(zoom){
      This keeps text at a stable screen-pixel size instead of interpolating
      fs between LOD stops which produces jumpy, inconsistent sizing. */
   d.fs=Math.max(1,0.34/Math.max(zoom,0.05));
+  /* Enforce minimum spacing based on counter-scaled port size.
+     Without this, ports/text grow via counter-scale but gaps shrink
+     via LOD, causing visual crowding at low zoom. */
+  const _pfs=Math.min(d.fs,2.5);
+  const _po=Math.round(20*_pfs); /* counter-scaled port diameter */
+  d.ng=Math.max(d.ng, _po*2.5);  /* horizontal node gap */
+  d.vg=Math.max(d.vg, _po*2);    /* vertical row gap */
+  d.gap=Math.max(d.gap, _po*1.5); /* group-to-group gap */
+  d.ep=Math.max(d.ep, _po*1.5);   /* edge padding inside groups */
   _dimCache={z:zoom,d:d};
   return d;
 }
