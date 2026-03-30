@@ -175,8 +175,8 @@ const _LOD_STOPS=[
 ];
 function _lerpDims(zoom){
   const S=_LOD_STOPS;
-  if(zoom>=S[0].z)return S[0];
-  if(zoom<=S[S.length-1].z)return S[S.length-1];
+  if(zoom>=S[0].z)return{...S[0]};
+  if(zoom<=S[S.length-1].z)return{...S[S.length-1]};
   for(let i=0;i<S.length-1;i++){
     if(zoom>=S[i+1].z){
       const t=(zoom-S[i+1].z)/(S[i].z-S[i+1].z);
@@ -625,8 +625,10 @@ function buildGroupLayout(groupNodes,lod){
   const d=_ld(lod);
   const colW={},rowH={};
   groupNodes.forEach(n=>{
-    const w=Math.min(n.w||d.cw,d.cw);
-    const h=Math.min(n.h||d.nh,d.nh);
+    /* Use port-aware minimums so grid cells are large enough for counter-scaled ports */
+    const pm=portMinDims(n,lod);
+    const w=Math.max(Math.min(n.w||d.cw,d.cw),pm.minW);
+    const h=Math.max(Math.min(n.h||d.nh,d.nh),pm.minH);
     const c=n.col??0, r=n.row??0;
     colW[c]=Math.max(colW[c]||0,w);
     rowH[r]=Math.max(rowH[r]||0,h);
@@ -2434,14 +2436,15 @@ function App(){
       if(zoomChanged&&fitted.length>0){
         /* Zoom changed — scale group positions proportionally to LOD.
            Both X and Y scale so visual arrangement is preserved.
-           No forced cascade — user's placement is respected. */
-        const prevLD=getDims(prevZoom);
-        const xPrev=prevLD.cw+prevLD.ng;
-        const xNew=ld.cw+ld.ng;
-        /* Y scale based on representative group height (2*ep+nh+gh) so that
-           gaps between groups maintain consistent visual proportion */
-        const yPrev=2*prevLD.ep+prevLD.nh+prevLD.gh;
-        const yNew=2*ld.ep+ld.nh+ld.gh;
+           Use RAW interpolated dims (no counter-scale enforcement) so that
+           scaling is perfectly symmetric: zoom out then back in = original position.
+           The enforced spacing is only for intra-group node layout, not inter-group. */
+        const prevRaw=_lerpDims(prevZoom);
+        const curRaw=_lerpDims(zoom);
+        const xPrev=prevRaw.cw+prevRaw.ng;
+        const xNew=curRaw.cw+curRaw.ng;
+        const yPrev=2*prevRaw.ep+prevRaw.nh+prevRaw.gh;
+        const yNew=2*curRaw.ep+curRaw.nh+curRaw.gh;
         if(Math.abs(xPrev-xNew)>1||Math.abs(yPrev-yNew)>1){
           const xScale=xNew/xPrev;
           const yScale=yNew/yPrev;
@@ -2457,15 +2460,17 @@ function App(){
       }
       /* Overlap resolution — runs on EVERY render (zoom change or not).
          Only pushes down if groups actually overlap. Never changes X.
-         Resolves overlaps from scaling or user drag in a single pass. */
+         Uses RAW interpolated gap (no counter-scale enforcement) to prevent
+         the ratchet effect where zooming out inflates gaps permanently. */
       if(!activeDragId){
+        const rawGap=_lerpDims(zoom).gap;
         const sorted=[...fitted].sort((a,b)=>a.y-b.y);
         for(let i=1;i<sorted.length;i++){
           for(let j=0;j<i;j++){
             const prev=sorted[j];
-            const hOverlap=sorted[i].x<prev.x+prev.w+ld.gap&&sorted[i].x+sorted[i].w+ld.gap>prev.x;
+            const hOverlap=sorted[i].x<prev.x+prev.w+rawGap&&sorted[i].x+sorted[i].w+rawGap>prev.x;
             if(!hOverlap)continue;
-            const targetY=prev.y+prev.h+ld.gap;
+            const targetY=prev.y+prev.h+rawGap;
             if(sorted[i].y<targetY-1){
               const idx=fitted.findIndex(f=>f.id===sorted[i].id);
               fitted[idx]={...fitted[idx],y:targetY};
