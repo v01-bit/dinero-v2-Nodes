@@ -381,6 +381,28 @@ function nCtr(n,gs,lod){const a=nAbs(n,gs,lod);return{x:a.x+n.w/2,y:a.y+n.h/2}}
 const PORT_SEP=36; /* spacing between stacked ports on same side */
 const SIDES=['right','left','top','bottom'];
 function oppositeSide(s){return{right:'left',left:'right',top:'bottom',bottom:'top'}[s]}
+/* Minimum node dimensions to contain all counter-scaled ports.
+   Uses portsByNode (dynamic side assignments) when available,
+   falls back to nd.ports (static definitions). */
+function portMinDims(nd,zoom,pbn){
+  const d=getDims(zoom);
+  const pfs=Math.min(d.fs||1,2.5);
+  const pSep=Math.max(PORT_SEP,Math.round(20*pfs*1.8));
+  const pOuter=Math.round(20*pfs);
+  let maxV=0,maxH=0;
+  if(pbn&&pbn[nd.id]){
+    const np=pbn[nd.id];
+    maxV=Math.max((np.right||[]).length,(np.left||[]).length);
+    maxH=Math.max((np.top||[]).length,(np.bottom||[]).length);
+  }else if(nd.ports){
+    maxV=Math.max((nd.ports.right||[]).length,(nd.ports.left||[]).length);
+    maxH=Math.max((nd.ports.top||[]).length,(nd.ports.bottom||[]).length);
+  }
+  return{
+    minW:maxH>0?(maxH-1)*pSep+pOuter:0,
+    minH:maxV>0?(maxV-1)*pSep+pOuter:0
+  };
+}
 
 /* Get port position on a specific side at a given slot offset */
 function portAt(abs,w,h,side,offset){
@@ -2358,9 +2380,11 @@ function App(){
       let maxR=0,maxB=0;
       gNodes.forEach(nd=>{
         /* Use LOD-clamped sizes for bounds — DOM measurements lag by one frame
-           and would make groups temporarily too large on zoom transitions. */
-        const mw=Math.min(nd.w,lcw);
-        const mh=Math.min(nd.h,ld.nh);
+           and would make groups temporarily too large on zoom transitions.
+           Also enforce port-based minimum so nodes contain all counter-scaled ports. */
+        const _pm=portMinDims(nd,zoom);
+        const mw=Math.max(Math.min(nd.w,lcw),_pm.minW);
+        const mh=Math.max(Math.min(nd.h,ld.nh),_pm.minH);
         /* Use group-aware position for accurate bounds */
         const useX=(nd.col!=null)?gridToPosInGroup(nd.col,nd.row,gNodes,zoom).x:nd.x;
         const useY=(nd.row!=null)?gridToPosInGroup(nd.col,nd.row,gNodes,zoom).y:nd.y;
@@ -3401,9 +3425,11 @@ function App(){
             :getTheme(tier);
           const abs=g?nAbs(nd,groups,zoom):{x:nd.x,y:nd.y};
           const _d=getDims(zoom);
-          const lodW=Math.min(nd.w,_d.cw);
-          const lodH=Math.min(nd.h,_d.nh);
           const fs=_d.fs||1, pd=_d.pd||1; /* font scale + padding scale */
+          /* Ensure node is large enough to contain all counter-scaled ports */
+          const _pm=portMinDims(nd,zoom,portsByNode);
+          const lodW=Math.max(Math.min(nd.w,_d.cw),_pm.minW);
+          const lodH=Math.max(Math.min(nd.h,_d.nh),_pm.minH);
           const isErr=nd.status==='error';
           const isSel=selected===nd.id;
           const connectedToHover=hoverNode!==null&&hoverNode!==nd.id&&wires.some(w=>(w.src===hoverNode&&w.tgt===nd.id)||(w.tgt===hoverNode&&w.src===nd.id));
