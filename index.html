@@ -2433,37 +2433,46 @@ function App(){
       const prevZoom=lastCascadeZoomRef.current;
       const zoomChanged=prevZoom!==null&&Math.abs(prevZoom-zoom)>0.001;
       lastCascadeZoomRef.current=zoom;
+      const rawGap=_lerpDims(zoom).gap;
       if(zoomChanged&&fitted.length>0){
-        /* Zoom changed — scale group positions proportionally to LOD.
-           Both X and Y scale so visual arrangement is preserved.
-           Use RAW interpolated dims (no counter-scale enforcement) so that
-           scaling is perfectly symmetric: zoom out then back in = original position.
-           The enforced spacing is only for intra-group node layout, not inter-group. */
+        /* Zoom changed — scale X positions proportionally to preserve horizontal
+           arrangement. Y positions are handled by bidirectional cascade below. */
         const prevRaw=_lerpDims(prevZoom);
         const curRaw=_lerpDims(zoom);
         const xPrev=prevRaw.cw+prevRaw.ng;
         const xNew=curRaw.cw+curRaw.ng;
-        const yPrev=2*prevRaw.ep+prevRaw.nh+prevRaw.gh;
-        const yNew=2*curRaw.ep+curRaw.nh+curRaw.gh;
-        if(Math.abs(xPrev-xNew)>1||Math.abs(yPrev-yNew)>1){
+        if(Math.abs(xPrev-xNew)>1){
           const xScale=xNew/xPrev;
-          const yScale=yNew/yPrev;
           for(let i=0;i<fitted.length;i++){
             const newX=fitted[i].x*xScale;
-            const newY=fitted[i].y*yScale;
-            if(Math.abs(fitted[i].x-newX)>1||Math.abs(fitted[i].y-newY)>1){
-              fitted[i]={...fitted[i],x:newX,y:newY};
+            if(Math.abs(fitted[i].x-newX)>1){
+              fitted[i]={...fitted[i],x:newX};
               changed=true;
             }
           }
         }
-      }
-      /* Overlap resolution — runs on EVERY render (zoom change or not).
-         Only pushes down if groups actually overlap. Never changes X.
-         Uses RAW interpolated gap (no counter-scale enforcement) to prevent
-         the ratchet effect where zooming out inflates gaps permanently. */
-      if(!activeDragId){
-        const rawGap=_lerpDims(zoom).gap;
+        /* Bidirectional Y cascade on zoom change: both push apart AND pull together.
+           This guarantees gaps = rawGap at every zoom level, eliminating ratchet.
+           Groups that would overlap are pushed apart; groups with excess gap are
+           pulled together. Only affects horizontally-overlapping group pairs. */
+        const sorted=[...fitted].sort((a,b)=>a.y-b.y);
+        for(let i=1;i<sorted.length;i++){
+          for(let j=0;j<i;j++){
+            const prev=sorted[j];
+            const hOverlap=sorted[i].x<prev.x+prev.w+rawGap&&sorted[i].x+sorted[i].w+rawGap>prev.x;
+            if(!hOverlap)continue;
+            const targetY=prev.y+prev.h+rawGap;
+            if(Math.abs(sorted[i].y-targetY)>1){
+              const idx=fitted.findIndex(f=>f.id===sorted[i].id);
+              fitted[idx]={...fitted[idx],y:targetY};
+              sorted[i]={...sorted[i],y:targetY};
+              changed=true;
+            }
+          }
+        }
+      }else if(!activeDragId){
+        /* Normal render (no zoom change): push-apart only overlap resolution.
+           This respects user's manual positioning — only prevents actual overlaps. */
         const sorted=[...fitted].sort((a,b)=>a.y-b.y);
         for(let i=1;i<sorted.length;i++){
           for(let j=0;j<i;j++){
