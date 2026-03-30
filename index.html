@@ -197,7 +197,7 @@ function getDims(zoom){
   /* Exact counter-scale: fs * zoom = constant (0.34) at all zoom levels.
      This keeps text at a stable screen-pixel size instead of interpolating
      fs between LOD stops which produces jumpy, inconsistent sizing. */
-  d.fs=0.34/Math.max(zoom,0.05);
+  d.fs=Math.max(1,0.34/Math.max(zoom,0.05));
   _dimCache={z:zoom,d:d};
   return d;
 }
