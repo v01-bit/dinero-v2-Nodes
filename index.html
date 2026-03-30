@@ -3447,6 +3447,7 @@ function App(){
           const abs=g?nAbs(nd,groups,zoom):{x:nd.x,y:nd.y};
           const _d=getDims(zoom);
           const fs=_d.fs||1, pd=_d.pd||1; /* font scale + padding scale */
+          const showNodeBtns=zoom>=0.2244; /* hide ✓/✕ below ~55% display zoom */
           /* Ensure node is large enough to contain all counter-scaled ports */
           const _pm=portMinDims(nd,zoom,portsByNode);
           const lodW=Math.max(Math.min(nd.w,_d.cw),_pm.minW);
@@ -3482,14 +3483,14 @@ function App(){
                 overflow:'hidden',textOverflow:'ellipsis',whiteSpace:lod==='full'?'nowrap':'normal',
                 wordBreak:'break-word',lineHeight:1.15,
                 letterSpacing:P(1*fs),opacity:0.9}}>{nd.label}</span>
-              <span onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
+              {showNodeBtns&&<span onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{color:isErr?'#cc3333':t.accent,fontSize:P(28*fs),cursor:'pointer',
-                  opacity:0.5,padding:`0 ${P(4*pd)}px`,lineHeight:1}}>{isErr?'⚠':'✓'}</span>
-              <span onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
+                  opacity:0.5,padding:`0 ${P(4*pd)}px`,lineHeight:1}}>{isErr?'⚠':'✓'}</span>}
+              {showNodeBtns&&<span onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{color:t.text,fontSize:P(28*fs),cursor:'pointer',
-                  opacity:0.4,padding:`0 ${P(4*pd)}px`,lineHeight:1}}>✕</span>
+                  opacity:0.4,padding:`0 ${P(4*pd)}px`,lineHeight:1}}>✕</span>}
             </div>
           </>};
 
@@ -3515,14 +3516,14 @@ function App(){
                 <span style={{fontSize:P(20*fs),fontWeight:700,background:'#cc333322',
                   color:'#ff6666',padding:`${P(4*pd)}px ${P(10*pd)}px`,borderRadius:P(4*pd),letterSpacing:0.8}}>err</span>
               </span>}
-              <span onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
+              {showNodeBtns&&<span onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{color:isErr?'#cc3333':t.accent,fontSize:P(28*fs),cursor:'pointer',
-                  opacity:0.5,lineHeight:1}}>{isErr?'⚠':'✓'}</span>
-              <span onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
+                  opacity:0.5,lineHeight:1}}>{isErr?'⚠':'✓'}</span>}
+              {showNodeBtns&&<span onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{color:t.text,fontSize:P(28*fs),cursor:'pointer',
-                  opacity:0.4,lineHeight:1}}>✕</span>
+                  opacity:0.4,lineHeight:1}}>✕</span>}
             </div>
             <div style={{flex:1,background:isErr?'#1a0e0e':t.nodeBg}}/>
           </>};
@@ -3550,22 +3551,22 @@ function App(){
                 <span style={{fontSize:P(20*fs),fontWeight:700,background:'#cc333333',
                   color:'#ff6666',padding:`${P(6*pd)}px ${P(14*pd)}px`,borderRadius:P(5*pd),letterSpacing:1}}>ERROR</span>
               </span>}
-              <button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
+              {showNodeBtns&&<button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:isErr?'#cc3333':t.accent,
                   fontSize:P(28*fs),cursor:'pointer',padding:0,lineHeight:1,width:btnSz,height:btnSz,
                   display:'flex',alignItems:'center',justifyContent:'center',borderRadius:P(8*pd),
                   opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
                 onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
-                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>{isErr?'⚠':'✓'}</button>
-              <button onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
+                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>{isErr?'⚠':'✓'}</button>}
+              {showNodeBtns&&<button onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:t.text,
                   fontSize:P(28*fs),cursor:'pointer',padding:0,lineHeight:1,width:btnSz,height:btnSz,
                   display:'flex',alignItems:'center',justifyContent:'center',borderRadius:P(8*pd),
                   opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
                 onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
-                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>✕</button>
+                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>✕</button>}
             </div>
             {nd.h>=THRESH_MODEL&&(
               <div style={{padding:`${P(16*pd)}px ${P(32*pd)}px`,borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
@@ -3621,22 +3622,22 @@ function App(){
                 <span style={{fontSize:P(20*fs),fontWeight:700,background:'#cc333333',
                   color:'#ff6666',padding:badgePad,borderRadius:P(5*pd),letterSpacing:1}}>ERROR</span>
               </span>}
-              <button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
+              {showNodeBtns&&<button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:isErr?'#cc3333':t.accent,
                   fontSize:P(28*fs),cursor:'pointer',padding:0,lineHeight:1,width:btnSz,height:btnSz,
                   display:'flex',alignItems:'center',justifyContent:'center',borderRadius:P(8*pd),
                   opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
                 onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
-                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>{isErr?'⚠':'✓'}</button>
-              <button onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
+                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>{isErr?'⚠':'✓'}</button>}
+              {showNodeBtns&&<button onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{background:t.accent+'15',border:`1px solid ${t.accent}44`,color:t.text,
                   fontSize:P(28*fs),cursor:'pointer',padding:0,lineHeight:1,width:btnSz,height:btnSz,
                   display:'flex',alignItems:'center',justifyContent:'center',borderRadius:P(8*pd),
                   opacity:0.7,transition:'opacity 0.15s, background 0.15s'}}
                 onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=t.accent+'33'}}
-                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>✕</button>
+                onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=t.accent+'15'}}>✕</button>}
             </div>
             {nd.h>=THRESH_MODEL&&(
               <div style={{padding:secPad,borderBottom:`1px solid ${isErr?'#cc333322':t.accent+'15'}`,
