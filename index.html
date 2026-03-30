@@ -2456,12 +2456,30 @@ function App(){
            Measure each gap from pre-auto-fit state (groups), scale it by
            gapRatio = curRaw.gap/prevRaw.gap, then reposition using new
            (auto-fitted) heights. This preserves user-placed gaps proportionally
-           while adapting to changing group heights. */
+           while adapting to changing group heights.
+           IMPORTANT: Use ORIGINAL (pre-zoom) horizontal positions to determine
+           which groups overlap horizontally. This prevents side-positioned groups
+           from being pulled into the vertical cascade after X scaling brings them
+           closer together. */
         const gapRatio=curRaw.gap/Math.max(prevRaw.gap,0.1);
         const yScale=(2*curRaw.ep+curRaw.nh+curRaw.gh)/(2*prevRaw.ep+prevRaw.nh+prevRaw.gh);
-        /* Pre-auto-fit gaps (from `groups` state — original positions AND heights) */
+        /* Pre-auto-fit state (from `groups` — original positions, widths, heights) */
         const origSorted=[...groups].sort((a,b)=>a.y-b.y);
         const origGapMap={};
+        /* Build map of original horizontal overlap relationships.
+           Only cascade Y between groups that WERE vertically stacked (horizontally
+           overlapping) before this zoom change. Side-by-side groups stay independent. */
+        const origHOverlap={};
+        for(let i=0;i<origSorted.length;i++){
+          for(let j=0;j<i;j++){
+            const a=origSorted[i],b=origSorted[j];
+            const ov=a.x<b.x+b.w+prevRaw.gap&&a.x+a.w+prevRaw.gap>b.x;
+            if(ov){
+              if(!origHOverlap[a.id])origHOverlap[a.id]=new Set();
+              origHOverlap[a.id].add(b.id);
+            }
+          }
+        }
         for(let i=1;i<origSorted.length;i++){
           origGapMap[origSorted[i].id]=origSorted[i].y-(origSorted[i-1].y+origSorted[i-1].h);
         }
@@ -2479,8 +2497,9 @@ function App(){
           let targetY=sorted[i].y*yScale; /* fallback: proportional scale */
           for(let j=i-1;j>=0;j--){
             const prev=sorted[j];
-            const hOv=sorted[i].x<prev.x+prev.w+rawGap&&sorted[i].x+sorted[i].w+rawGap>prev.x;
-            if(!hOv)continue;
+            /* Check ORIGINAL horizontal overlap — not post-scale positions */
+            const wasStacked=origHOverlap[sorted[i].id]?.has(prev.id);
+            if(!wasStacked)continue;
             const origGap=origGapMap[sorted[i].id]??prevRaw.gap;
             const scaledGap=Math.max(origGap*gapRatio,0);
             targetY=prev.y+prev.h+scaledGap;
