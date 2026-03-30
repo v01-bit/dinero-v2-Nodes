@@ -398,16 +398,21 @@ function portMinDims(nd,zoom,pbn){
     maxV=Math.max((nd.ports.right||[]).length,(nd.ports.left||[]).length);
     maxH=Math.max((nd.ports.top||[]).length,(nd.ports.bottom||[]).length);
   }
-  /* Title-based minimum width: ensure node is wide enough to show full title.
-     28 = base title fontSize, fs = counter-scale, 0.62 = avg char width ratio,
+  /* Title-based minimum width: use longest WORD (titles wrap at spaces).
+     28 = base title fontSize, fs = counter-scale, 0.7 = avg char width ratio,
      extra padding for dot indicator + buttons + margins */
   const titleFs=Math.round(28*(d.fs||1));
-  const titleW=nd.label?nd.label.length*titleFs*0.7:0;
+  const words=nd.label?nd.label.split(/[\s]+/):[];
+  const longest=words.length?Math.max(...words.map(w=>w.length)):0;
+  const titleW=longest*titleFs*0.7;
   const titlePad=Math.round(140*(d.pd||1)); /* dot + buttons + gaps */
   const titleMinW=titleW+titlePad;
+  /* Title stacking adds height — each extra line needs ~titleFs*1.3 */
+  const titleLines=words.length>1?words.length:1;
+  const titleMinH=titleLines>1?Math.round(titleFs*1.3*titleLines+20*(d.pd||1)):0;
   return{
     minW:Math.max(maxH>0?(maxH-1)*pSep+pOuter:0, titleMinW),
-    minH:maxV>0?(maxV-1)*pSep+pOuter:0
+    minH:Math.max(maxV>0?(maxV-1)*pSep+pOuter:0, titleMinH)
   };
 }
 
@@ -3458,14 +3463,15 @@ function App(){
 
           /* ── renderStrip: horizontal bar — NOT a card ── */
           const renderStrip=()=>{const P=Math.round;return<>
-            <div data-nheader="1" style={{height:lodH,display:'flex',alignItems:'center',
+            <div data-nheader="1" style={{minHeight:lodH,display:'flex',alignItems:'center',
               gap:P(10*pd),paddingLeft:P(18*pd),paddingRight:P(12*pd),flexShrink:0,
               background:`linear-gradient(135deg, ${isErr?'#2a1414':t.headerBg} 0%, ${isErr?'#1a0e0e':t.nodeBg} 100%)`}}>
               <div style={{width:P(12*fs),height:P(12*fs),borderRadius:P(6*fs),flexShrink:0,
                 background:isErr?'#cc3333':mdl.color,
                 boxShadow:`0 0 ${P(8*fs)}px ${isErr?'#cc333366':mdl.color+'55'}`}}/>
               <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:700,
-                overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',
+                overflow:'hidden',textOverflow:'ellipsis',whiteSpace:lod==='full'?'nowrap':'normal',
+                wordBreak:'break-word',lineHeight:1.15,
                 letterSpacing:P(1*fs),opacity:0.9}}>{nd.label}</span>
               <span onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
@@ -3489,7 +3495,8 @@ function App(){
               <div style={{width:dotSz,height:dotSz,borderRadius:dotSz/2,flexShrink:0,
                 background:isErr?'#cc3333':t.accent,opacity:0.7}}/>
               <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:600,
-                overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
+                overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'normal',
+                wordBreak:'break-word',lineHeight:1.15}}>{nd.label}</span>
               {nd.auth&&<span style={{fontSize:P(20*fs),fontWeight:700,background:'#d4a03022',
                 color:'#d4a030',padding:`${P(4*pd)}px ${P(10*pd)}px`,borderRadius:P(4*pd),letterSpacing:0.8,
                 textTransform:'uppercase',opacity:0.8}}>auth</span>}
@@ -3521,7 +3528,7 @@ function App(){
                 background:isErr?'#cc3333':t.accent,
                 boxShadow:`0 0 ${P(8*pd)}px ${isErr?'#cc333888':t.accent+'88'}`}}/>
               <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:600,overflow:'hidden',
-                textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{nd.label}</span>
+                textOverflow:'ellipsis',whiteSpace:'normal',wordBreak:'break-word',lineHeight:1.15}}>{nd.label}</span>
               {nd.auth&&<span style={{cursor:'default'}}
                 onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'auth',x:r.right,y:r.bottom,perms:nd.authPerms||[]})}}
                 onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
