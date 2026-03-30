@@ -2405,7 +2405,7 @@ function App(){
         /* Use LOD-clamped sizes for bounds — DOM measurements lag by one frame
            and would make groups temporarily too large on zoom transitions.
            Also enforce port-based minimum so nodes contain all counter-scaled ports. */
-        const _pm=portMinDims(nd,zoom);
+        const _pm=portMinDims(nd,zoom,portsByNode);
         const mw=Math.max(Math.min(nd.w,lcw),_pm.minW);
         const mh=Math.max(Math.min(nd.h,ld.nh),_pm.minH);
         /* Use group-aware position for accurate bounds */
