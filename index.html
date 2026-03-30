@@ -398,8 +398,15 @@ function portMinDims(nd,zoom,pbn){
     maxV=Math.max((nd.ports.right||[]).length,(nd.ports.left||[]).length);
     maxH=Math.max((nd.ports.top||[]).length,(nd.ports.bottom||[]).length);
   }
+  /* Title-based minimum width: ensure node is wide enough to show full title.
+     28 = base title fontSize, fs = counter-scale, 0.62 = avg char width ratio,
+     extra padding for dot indicator + buttons + margins */
+  const titleFs=Math.round(28*(d.fs||1));
+  const titleW=nd.label?nd.label.length*titleFs*0.7:0;
+  const titlePad=Math.round(140*(d.pd||1)); /* dot + buttons + gaps */
+  const titleMinW=titleW+titlePad;
   return{
-    minW:maxH>0?(maxH-1)*pSep+pOuter:0,
+    minW:Math.max(maxH>0?(maxH-1)*pSep+pOuter:0, titleMinW),
     minH:maxV>0?(maxV-1)*pSep+pOuter:0
   };
 }
