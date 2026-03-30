@@ -31,7 +31,7 @@ input,textarea,select{outline:none;border:none;font-family:inherit}
 @keyframes errorPulse{0%,100%{box-shadow:0 0 30px #cc333344,inset 0 0 15px #cc333311;border-color:#cc3333}50%{box-shadow:0 0 30px #4a9eff44,inset 0 0 15px #4a9eff11;border-color:#4a9eff}}
 @keyframes portPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.4)}}
 @keyframes dropZonePulse{0%,100%{opacity:0.5}50%{opacity:1}}
-.wire-dying{animation:wireRetract 0.5s ease-in forwards}
+.wire-dying{animation:wireRetract 0.3s ease-in forwards}
 @keyframes fadeIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
 .panel-enter{animation:fadeIn 0.25s ease-out}
 .canvas-shift-wrapper{will-change:transform;transform:translateX(0);transition:transform 0.3s cubic-bezier(0.4,0,0.2,1)}
@@ -87,7 +87,7 @@ input,textarea,select{outline:none;border:none;font-family:inherit}
 .sp-log-ts{color:#555;flex-shrink:0;font-variant-numeric:tabular-nums;min-width:58px}
 .sp-log-msg{color:#aaa}
 .sp-bar-track{height:4px;background:#ffffff0a;border-radius:2px;overflow:hidden;margin-top:3px}
-.sp-bar-fill{height:100%;border-radius:2px;transition:width 0.5s ease}
+.sp-bar-fill{height:100%;border-radius:2px;transition:width 0.3s ease}
 .sp-metric{padding:6px 0;border-bottom:1px solid #ffffff06}
 .sp-metric:last-child{border-bottom:none}
 .sp-metric-top{display:flex;justify-content:space-between;font-size:11px}
@@ -1134,10 +1134,10 @@ function ModelDropdown({value,onChange,models,nodeBg,accent,color,zoom=1,fontSiz
           borderRadius:Math.round((_fs||26)*0.23),minWidth:0,overflow:'hidden',
           background:nodeBg,cursor:'pointer',display:'flex',alignItems:'center',
           justifyContent:'space-between',
-          border:`1px solid ${accent}22`,userSelect:'none',transition:'background 0.15s, border-color 0.5s ease'}}
+          border:`1px solid ${accent}22`,userSelect:'none',transition:'background 0.15s, border-color 0.3s ease'}}
         onMouseEnter={e=>e.currentTarget.style.background=accent+'12'}
         onMouseLeave={e=>e.currentTarget.style.background=nodeBg}>
-        <span style={{color:labelColor||cur.color,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0,flex:1,transition:'color 0.5s ease'}}>{cur.label} ({cur.cost})</span>
+        <span style={{color:labelColor||cur.color,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0,flex:1,transition:'color 0.3s ease'}}>{cur.label} ({cur.cost})</span>
         <span style={{fontSize:Math.round((_fs||26)*1.6),color:accent,marginLeft:Math.round((_fs||26)*0.3),lineHeight:0.5,flexShrink:0,opacity:0.7}}>{open?'▴':'▾'}</span>
       </div>
       {visible&&pos&&(()=>{
@@ -1934,7 +1934,7 @@ function LivePanel({nd,tier,t,isErr,wires,nodes,groups,onClose,updateNode,onChan
           <span style={{fontSize:8,color:'#666',letterSpacing:1}}>HEALTH</span>
           <div style={{flex:1,height:3,background:'#ffffff0a',borderRadius:2,overflow:'hidden'}}>
             <div style={{width:`${health.pct}%`,height:'100%',background:accent,borderRadius:2,
-              transition:'width 0.5s ease'}}/>
+              transition:'width 0.3s ease'}}/>
           </div>
           <span style={{fontSize:9,color:accent,fontWeight:600,fontVariantNumeric:'tabular-nums'}}>{health.pct}%</span>
         </div>
@@ -2241,7 +2241,7 @@ function App(){
   useEffect(()=>{
     const hasErr=nodes.some(n=>n.status==='error');
     if(!hasErr){if(errPulseBlue)setErrPulseBlue(false);return}
-    const iv=setInterval(()=>setErrPulseBlue(v=>!v),975); /* 35% faster than original 1500ms */
+    const iv=setInterval(()=>setErrPulseBlue(v=>!v),650); /* faster pulse */
     return()=>clearInterval(iv);
   },[nodes.map(n=>n.status).join(',')]); // eslint-disable-line
 
@@ -3697,10 +3697,10 @@ function App(){
             <div data-nheader="1" style={{minHeight:lodH,display:'flex',alignItems:'center',
               gap:P(10*pd),paddingLeft:P(18*pd),paddingRight:P(12*pd),flexShrink:0,
               background:`linear-gradient(135deg, ${isErr&&!errPulseBlue?'#2a1414':t.headerBg} 0%, ${isErr&&!errPulseBlue?'#1a0e0e':t.nodeBg} 100%)`,
-              transition:'background 0.5s ease'}}>
+              transition:'background 0.3s ease'}}>
               <div style={{width:P(12*fs),height:P(12*fs),borderRadius:P(6*fs),flexShrink:0,
                 background:isErr?eAcc:mdl.color,
-                boxShadow:`0 0 ${P(8*fs)}px ${isErr?eAcc+'66':mdl.color+'55'}`,transition:'background 0.5s ease, box-shadow 0.5s ease'}}/>
+                boxShadow:`0 0 ${P(8*fs)}px ${isErr?eAcc+'66':mdl.color+'55'}`,transition:'background 0.3s ease, box-shadow 0.3s ease'}}/>
               <span style={{flex:1,color:isErr&&!errPulseBlue?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:700,
                 overflow:'hidden',textOverflow:'ellipsis',whiteSpace:lod==='full'?'nowrap':'normal',
                 overflowWrap:'break-word',wordBreak:'normal',lineHeight:1.15,
@@ -3708,11 +3708,11 @@ function App(){
               {showNodeBtns&&<span onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{color:isErr?eAcc:t.accent,fontSize:P(28*fs),cursor:'pointer',
-                  opacity:0.5,padding:`0 ${P(4*pd)}px`,lineHeight:1,transition:'color 0.5s ease'}}>{isErr?'⚠':'✓'}</span>}
+                  opacity:0.5,padding:`0 ${P(4*pd)}px`,lineHeight:1,transition:'color 0.3s ease'}}>{isErr?'⚠':'✓'}</span>}
               {showNodeBtns&&<span onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{color:isErr?eAcc:t.text,fontSize:P(28*fs),cursor:'pointer',
-                  opacity:0.4,padding:`0 ${P(4*pd)}px`,lineHeight:1,transition:'color 0.5s ease'}}>✕</span>}
+                  opacity:0.4,padding:`0 ${P(4*pd)}px`,lineHeight:1,transition:'color 0.3s ease'}}>✕</span>}
             </div>
           </>};
 
@@ -3724,31 +3724,31 @@ function App(){
               padding:`${P(20*pd)}px ${P(28*pd)}px`,gap:P(12*pd),flexShrink:0,
               background:isErr&&!errPulseBlue?'#2a1414':t.headerBg,
               borderBottom:`2px solid ${isErr?eAcc+'22':t.accent+'18'}`,
-              transition:'background 0.5s ease, border-color 0.5s ease'}}>
+              transition:'background 0.3s ease, border-color 0.3s ease'}}>
               <div style={{width:dotSz,height:dotSz,borderRadius:dotSz/2,flexShrink:0,
-                background:isErr?eAcc:t.accent,opacity:0.7,transition:'background 0.5s ease'}}/>
+                background:isErr?eAcc:t.accent,opacity:0.7,transition:'background 0.3s ease'}}/>
               <span style={{flex:1,color:isErr&&!errPulseBlue?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:600,
                 overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'normal',
                 overflowWrap:'break-word',wordBreak:'normal',lineHeight:1.15}}>{nd.label}</span>
               {nd.auth&&showAuthBadge&&<span style={{fontSize:P(20*fs),fontWeight:700,background:(isErr?eAcc:'#d4a030')+'22',
                 color:isErr?eAcc:'#d4a030',padding:`${P(4*pd)}px ${P(10*pd)}px`,borderRadius:P(4*pd),letterSpacing:0.8,
-                textTransform:'uppercase',opacity:0.8,transition:'background 0.5s ease, color 0.5s ease'}}>auth</span>}
+                textTransform:'uppercase',opacity:0.8,transition:'background 0.3s ease, color 0.3s ease'}}>auth</span>}
               {isErr&&showErrBadge&&<span style={{cursor:'default'}}
                 onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'error',x:r.right,y:r.bottom,errorInfo:nd.errorInfo})}}
                 onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
                 <span style={{fontSize:P(20*fs),fontWeight:700,background:eAcc+'33',
-                  color:eAcc,padding:`${P(4*pd)}px ${P(10*pd)}px`,borderRadius:P(4*pd),letterSpacing:0.8,transition:'background 0.5s ease, color 0.5s ease'}}>err</span>
+                  color:eAcc,padding:`${P(4*pd)}px ${P(10*pd)}px`,borderRadius:P(4*pd),letterSpacing:0.8,transition:'background 0.3s ease, color 0.3s ease'}}>err</span>
               </span>}
               {showNodeBtns&&<span onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{color:isErr?eAcc:t.accent,fontSize:P(28*fs),cursor:'pointer',
-                  opacity:0.5,lineHeight:1,transition:'color 0.5s ease'}}>{isErr?'⚠':'✓'}</span>}
+                  opacity:0.5,lineHeight:1,transition:'color 0.3s ease'}}>{isErr?'⚠':'✓'}</span>}
               {showNodeBtns&&<span onClick={e=>{e.stopPropagation();requestDelete(nd.id)}}
                 onMouseDown={e=>e.stopPropagation()}
                 style={{color:isErr?eAcc:t.text,fontSize:P(28*fs),cursor:'pointer',
-                  opacity:0.4,lineHeight:1,transition:'color 0.5s ease'}}>✕</span>}
+                  opacity:0.4,lineHeight:1,transition:'color 0.3s ease'}}>✕</span>}
             </div>
-            <div style={{flex:1,background:isErr&&!errPulseBlue?'#1a0e0e':t.nodeBg,transition:'background 0.5s ease'}}/>
+            <div style={{flex:1,background:isErr&&!errPulseBlue?'#1a0e0e':t.nodeBg,transition:'background 0.3s ease'}}/>
           </>};
 
           const renderCompact=()=>{
@@ -3757,23 +3757,23 @@ function App(){
             <div data-nheader="1" style={{height:hdrH,background:isErr&&!errPulseBlue?'#2a1414':t.headerBg,display:'flex',
               alignItems:'center',padding:`0 ${hdrPad}px`,gap:P(14*pd),
               borderBottom:`1px solid ${isErr?eAcc+'44':t.accent+'22'}`,flexShrink:0,
-              transition:'background 0.5s ease, border-color 0.5s ease'}}>
+              transition:'background 0.3s ease, border-color 0.3s ease'}}>
               <div style={{width:dotSz,height:dotSz,borderRadius:dotSz/2,flexShrink:0,
                 background:isErr?eAcc:t.accent,
-                boxShadow:`0 0 ${P(8*pd)}px ${isErr?eAcc+'88':t.accent+'88'}`,transition:'background 0.5s ease, box-shadow 0.5s ease'}}/>
+                boxShadow:`0 0 ${P(8*pd)}px ${isErr?eAcc+'88':t.accent+'88'}`,transition:'background 0.3s ease, box-shadow 0.3s ease'}}/>
               <span style={{flex:1,color:isErr&&!errPulseBlue?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:600,overflow:'hidden',
-                textOverflow:'ellipsis',whiteSpace:'normal',overflowWrap:'break-word',wordBreak:'normal',lineHeight:1.15,transition:'color 0.5s ease'}}>{nd.label}</span>
+                textOverflow:'ellipsis',whiteSpace:'normal',overflowWrap:'break-word',wordBreak:'normal',lineHeight:1.15,transition:'color 0.3s ease'}}>{nd.label}</span>
               {nd.auth&&showAuthBadge&&<span style={{cursor:'default'}}
                 onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'auth',x:r.right,y:r.bottom,perms:nd.authPerms||[]})}}
                 onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
                 <span style={{fontSize:P(20*fs),fontWeight:700,background:(isErr?eAcc:'#d4a030')+'33',
-                  color:isErr?eAcc:'#d4a030',padding:`${P(6*pd)}px ${P(14*pd)}px`,borderRadius:P(5*pd),letterSpacing:1,transition:'background 0.5s ease, color 0.5s ease'}}>AUTH</span>
+                  color:isErr?eAcc:'#d4a030',padding:`${P(6*pd)}px ${P(14*pd)}px`,borderRadius:P(5*pd),letterSpacing:1,transition:'background 0.3s ease, color 0.3s ease'}}>AUTH</span>
               </span>}
               {isErr&&showErrBadge&&<span style={{cursor:'default'}}
                 onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'error',x:r.right,y:r.bottom,errorInfo:nd.errorInfo})}}
                 onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
                 <span style={{fontSize:P(20*fs),fontWeight:700,background:eAcc+'33',
-                  color:eAcc,padding:`${P(6*pd)}px ${P(14*pd)}px`,borderRadius:P(5*pd),letterSpacing:1,transition:'background 0.5s ease, color 0.5s ease'}}>ERROR</span>
+                  color:eAcc,padding:`${P(6*pd)}px ${P(14*pd)}px`,borderRadius:P(5*pd),letterSpacing:1,transition:'background 0.3s ease, color 0.3s ease'}}>ERROR</span>
               </span>}
               {showNodeBtns&&<button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
@@ -3788,7 +3788,7 @@ function App(){
                 style={{background:eAcc+'15',border:`1px solid ${eAcc}44`,color:isErr?eAcc:t.text,
                   fontSize:P(28*fs),cursor:'pointer',padding:0,lineHeight:1,width:btnSz,height:btnSz,
                   display:'flex',alignItems:'center',justifyContent:'center',borderRadius:P(8*pd),
-                  opacity:0.7,transition:'opacity 0.15s, background 0.5s ease, border-color 0.5s ease, color 0.5s ease'}}
+                  opacity:0.7,transition:'opacity 0.15s, background 0.3s ease, border-color 0.3s ease, color 0.3s ease'}}
                 onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=eAcc+'33'}}
                 onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=eAcc+'15'}}>✕</button>}
             </div>
@@ -3808,13 +3808,13 @@ function App(){
                    then collapse to single-line in deeper compact */
                 const multiLine=zoom>=0.306;
                 return <div style={{flex:1,margin:`0 ${P(32*pd)}px`,padding:`${P(12*pd)}px 0`,overflow:'hidden'}}>
-                  <div style={{fontSize:P(26*fs),lineHeight:1.35,color:isErr?(errPulseBlue?t.text+'aa':'#cc9999'):t.text+'aa',transition:'color 0.5s ease',
+                  <div style={{fontSize:P(26*fs),lineHeight:1.35,color:isErr?(errPulseBlue?t.text+'aa':'#cc9999'):t.text+'aa',transition:'color 0.3s ease',
                     overflow:'hidden',textOverflow:'ellipsis',
                     whiteSpace:multiLine?'pre-wrap':'nowrap',
                     wordBreak:multiLine?'break-word':'normal'}}>{nd.prompt}</div>
                 </div>;
               })()
-              :<div style={{flex:1,background:isErr&&!errPulseBlue?'#2a1414':t.nodeBg,transition:'background 0.5s ease'}}/>}
+              :<div style={{flex:1,background:isErr&&!errPulseBlue?'#2a1414':t.nodeBg,transition:'background 0.3s ease'}}/>}
           </>};
 
           const renderFull=()=>{
@@ -3829,23 +3829,23 @@ function App(){
             <div data-nheader="1" style={{height:hdrH,background:isErr&&!errPulseBlue?'#2a1414':t.headerBg,display:'flex',
               alignItems:'center',padding:`0 ${hdrPad}px`,gap:hdrGap,
               borderBottom:`1px solid ${isErr?eAcc+'44':t.accent+'22'}`,flexShrink:0,
-              transition:'background 0.5s ease, border-color 0.5s ease'}}>
+              transition:'background 0.3s ease, border-color 0.3s ease'}}>
               <div style={{width:dotSz,height:dotSz,borderRadius:dotSz/2,flexShrink:0,
                 background:isErr?eAcc:t.accent,
-                boxShadow:`0 0 ${P(8*pd)}px ${isErr?eAcc+'88':t.accent+'88'}`,transition:'background 0.5s ease, box-shadow 0.5s ease'}}/>
+                boxShadow:`0 0 ${P(8*pd)}px ${isErr?eAcc+'88':t.accent+'88'}`,transition:'background 0.3s ease, box-shadow 0.3s ease'}}/>
               <span style={{flex:1,color:isErr&&!errPulseBlue?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:600,overflow:'hidden',
-                textOverflow:'ellipsis',whiteSpace:'nowrap',transition:'color 0.5s ease'}}>{nd.label}</span>
+                textOverflow:'ellipsis',whiteSpace:'nowrap',transition:'color 0.3s ease'}}>{nd.label}</span>
               {nd.auth&&showAuthBadge&&<span style={{cursor:'default'}}
                 onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'auth',x:r.right,y:r.bottom,perms:nd.authPerms||[]})}}
                 onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
                 <span style={{fontSize:P(20*fs),fontWeight:700,background:(isErr?eAcc:'#d4a030')+'33',
-                  color:isErr?eAcc:'#d4a030',padding:badgePad,borderRadius:P(5*pd),letterSpacing:1,transition:'background 0.5s ease, color 0.5s ease'}}>AUTH</span>
+                  color:isErr?eAcc:'#d4a030',padding:badgePad,borderRadius:P(5*pd),letterSpacing:1,transition:'background 0.3s ease, color 0.3s ease'}}>AUTH</span>
               </span>}
               {isErr&&showErrBadge&&<span style={{cursor:'default'}}
                 onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'error',x:r.right,y:r.bottom,errorInfo:nd.errorInfo})}}
                 onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
                 <span style={{fontSize:P(20*fs),fontWeight:700,background:eAcc+'33',
-                  color:eAcc,padding:badgePad,borderRadius:P(5*pd),letterSpacing:1,transition:'background 0.5s ease, color 0.5s ease'}}>ERROR</span>
+                  color:eAcc,padding:badgePad,borderRadius:P(5*pd),letterSpacing:1,transition:'background 0.3s ease, color 0.3s ease'}}>ERROR</span>
               </span>}
               {showNodeBtns&&<button onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
@@ -3860,7 +3860,7 @@ function App(){
                 style={{background:eAcc+'15',border:`1px solid ${eAcc}44`,color:isErr?eAcc:t.text,
                   fontSize:P(28*fs),cursor:'pointer',padding:0,lineHeight:1,width:btnSz,height:btnSz,
                   display:'flex',alignItems:'center',justifyContent:'center',borderRadius:P(8*pd),
-                  opacity:0.7,transition:'opacity 0.15s, background 0.5s ease, border-color 0.5s ease, color 0.5s ease'}}
+                  opacity:0.7,transition:'opacity 0.15s, background 0.3s ease, border-color 0.3s ease, color 0.3s ease'}}
                 onMouseEnter={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.background=eAcc+'33'}}
                 onMouseLeave={e=>{e.currentTarget.style.opacity='0.7';e.currentTarget.style.background=eAcc+'15'}}>✕</button>}
             </div>
@@ -3889,7 +3889,7 @@ function App(){
                   minHeight:isDefault?undefined:0,
                   overflow:'auto',margin:`0 ${mx}px`,
                   overscrollBehavior:'contain',pointerEvents:'auto'}}>
-                <div style={{fontSize:P(26*fs),lineHeight:1.35,color:isErr?(errPulseBlue?t.text+'cc':'#cc9999'):t.text+'cc',transition:'color 0.5s ease',
+                <div style={{fontSize:P(26*fs),lineHeight:1.35,color:isErr?(errPulseBlue?t.text+'cc':'#cc9999'):t.text+'cc',transition:'color 0.3s ease',
                   whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{nd.prompt}</div>
               </div>;
             })()}
@@ -3910,7 +3910,7 @@ function App(){
               animation:loadPhase<4?(loadPhase>=2?`nodeFadeIn 0.35s ease-out ${nodeDelay}s both`:'none'):'none',
               opacity:loadPhase<2?0:(selected!==null&&!isSel&&!connectedToSel)?0.45:gSelDimmed?0.35:undefined,
               userSelect:'none',overflow:'visible',
-              transition:isErr?'background 0.5s ease, border-color 0.5s ease, box-shadow 0.5s ease':'border 0.15s, box-shadow 0.15s',
+              transition:isErr?'background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease':'border 0.15s, box-shadow 0.15s',
             }}>
 
               {/* flowing beads border on hover/select/connected */}
@@ -3973,10 +3973,10 @@ function App(){
                           boxShadow:isConn?`0 0 ${pGlow}px ${glow}44`:'none',
                           animation:(!isConn&&isTarget)?'portPulse 1s ease infinite':'none',
                           pointerEvents:'none',
-                          transition:isErr?'border-color 0.5s ease, background 0.5s ease, box-shadow 0.5s ease':'none',
+                          transition:isErr?'border-color 0.3s ease, background 0.3s ease, box-shadow 0.3s ease':'none',
                         }}>
                           <div style={{width:pInner,height:pInner,borderRadius:pInner/2,background:col,
-                            pointerEvents:'none',transition:isErr?'background 0.5s ease':'none'}}/>
+                            pointerEvents:'none',transition:isErr?'background 0.3s ease':'none'}}/>
                         </div>
                       </div>
                     );
@@ -4055,7 +4055,7 @@ function App(){
               <path d={wd.path} fill="none" stroke={wErrCol}
                 strokeWidth={wShadow} opacity={dim?0.005:0.06}
                 pointerEvents="none" strokeLinecap="round"
-                style={{transition:wd.isErr?'stroke 0.5s ease':'none'}}/>
+                style={{transition:wd.isErr?'stroke 0.3s ease':'none'}}/>
               {/* wide invisible hit area for hover detection */}
               <path d={wd.path} fill="none" stroke="transparent" strokeWidth={wHit}
                 style={{pointerEvents:'stroke',cursor:'pointer'}}
@@ -4064,21 +4064,34 @@ function App(){
               <path d={wd.path} fill="none" stroke={wErrCol}
                 strokeWidth={mainWidth}
                 strokeOpacity={mainOpacity}
-                markerEnd={dim?'none':`url(#arr-${wd.accent.replace('#','')})`}
+                markerEnd={dim?'none':`url(#arr-${(wd.isErr?wErrCol:wd.accent).replace('#','')})`}
                 pointerEvents="none" strokeLinecap="round"
-                style={{transition:wd.isErr?'stroke 0.5s ease, stroke-opacity 0.15s':'stroke-opacity 0.15s, stroke-width 0.15s'}}/>
+                style={{transition:wd.isErr?'stroke 0.3s ease, stroke-opacity 0.15s':'stroke-opacity 0.15s, stroke-width 0.15s'}}/>
               {/* dimmed arrowhead — uses opacity so marker dims too */}
               {dim&&<path d={wd.path} fill="none" stroke="transparent" strokeWidth="0.1"
                 markerEnd={`url(#arr-${wd.accent.replace('#','')})`}
                 opacity={0.03}
                 pointerEvents="none"/>}
-              {/* flow particles — disabled for error wires */}
-              {!wd.isErr&&(
-                <path d={wd.path} fill="none" stroke={wd.accent} className="wire-flow"
-                  strokeWidth={wFlow} strokeDasharray={`${Math.round(6*wfs)} ${Math.round(20*wfs)}`} opacity={flowOpacity}
+              {/* flow particles — inset at both ends to avoid bead overlap with ports/arrowheads.
+                 Uses pathLength=1000 so dash units are path-fraction-based (not pixel-based).
+                 Pattern: [0-len dash, startGap, (bead, gap)*, 0-len dash, endGap]
+                 The leading 0+startGap hides the first bead area.
+                 stroke-dashoffset shifts the pattern so the end also falls in a gap. */}
+              {(()=>{
+                const bead=Math.round(6*wfs), gap=Math.round(20*wfs);
+                const seg=bead+gap;
+                const inset=seg; /* gap at each end to clear port / arrowhead */
+                const usable=1000-2*inset; /* pathLength units available for beads */
+                const nBeads=Math.max(1,Math.floor(usable/seg));
+                const pLen=nBeads*seg+2*inset; /* exact pathLength so pattern ends cleanly */
+                return <path d={wd.path} fill="none" stroke={wd.isErr?wErrCol:wd.accent}
+                  className={wd.isErr?undefined:"wire-flow"}
+                  strokeWidth={wFlow} pathLength={pLen}
+                  strokeDasharray={`0 ${inset} ${(`${bead} ${gap} `).repeat(nBeads).trim()} 0 ${inset}`}
+                  opacity={flowOpacity}
                   strokeLinecap="round" pointerEvents="none"
-                  style={{transition:'opacity 0.15s'}}/>
-              )}
+                  style={{transition:wd.isErr?'stroke 0.3s ease, opacity 0.15s':'opacity 0.15s'}}/>;
+              })()}
             </g>);
           })}
 
