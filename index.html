@@ -3717,22 +3717,21 @@ function App(){
           const wHit=Math.round(28*wfs);
           const wFlow=Math.round(4*wfs);
           const wDie=Math.round(4*wfs);
-          /* Marker sizes scale with wfs to match wire proportions */
-          const mW=Math.round(10*wfs), mH=Math.round(8*wfs);
-          const mRef=Math.round(10*wfs), mMid=Math.round(4*wfs);
+          /* Markers use default markerUnits="strokeWidth" so they scale
+             proportionally with the counter-scaled wire strokeWidth */
           return <svg style={{position:'absolute',left:0,top:0,width:1,height:1,
           zIndex:5,pointerEvents:'none',overflow:'visible',
           opacity:loadPhase>=3?1:0,
           animation:loadPhase>=3&&loadPhase<4?'wireFadeIn 0.6s ease-out forwards':'none'}}>
           <defs>
-            <marker id="arr" markerWidth={mW} markerHeight={mH} refX={mRef} refY={mMid} orient="auto" markerUnits="userSpaceOnUse">
-              <path d={`M0,0 L${mRef},${mMid} L0,${mH}`} fill="#666" stroke="none"/></marker>
-            <marker id="arr-e" markerWidth={mW} markerHeight={mH} refX={mRef} refY={mMid} orient="auto" markerUnits="userSpaceOnUse">
-              <path d={`M0,0 L${mRef},${mMid} L0,${mH}`} fill="#cc3333" stroke="none"/></marker>
+            <marker id="arr" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
+              <path d="M0,0 L10,4 L0,8" fill="#666" stroke="none"/></marker>
+            <marker id="arr-e" markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
+              <path d="M0,0 L10,4 L0,8" fill="#cc3333" stroke="none"/></marker>
             {/* Per-color arrow markers so each wire's arrowhead matches its color */}
             {[...new Set(wireData.map(w=>w.accent))].map(c=>(
-              <marker key={'arr-'+c} id={'arr-'+c.replace('#','')} markerWidth={mW} markerHeight={mH} refX={mRef} refY={mMid} orient="auto" markerUnits="userSpaceOnUse">
-                <path d={`M0,0 L${mRef},${mMid} L0,${mH}`} fill={c} stroke="none"/></marker>
+              <marker key={'arr-'+c} id={'arr-'+c.replace('#','')} markerWidth="10" markerHeight="8" refX="10" refY="4" orient="auto">
+                <path d="M0,0 L10,4 L0,8" fill={c} stroke="none"/></marker>
             ))}
             <filter id="glow"><feGaussianBlur stdDeviation="3" result="blur"/>
               <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
