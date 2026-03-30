@@ -206,14 +206,14 @@ function getDims(zoom){
   d.ng=Math.max(d.ng, _po*2.5);  /* horizontal node gap */
   d.vg=Math.max(d.vg, _po*2);    /* vertical row gap */
   d.gap=Math.max(d.gap, _po*1.5); /* group-to-group gap */
-  d.ep=Math.max(d.ep, _po*1.5);   /* edge padding inside groups */
+  d.ep=Math.max(d.ep, _po*1.0);   /* edge padding inside groups — 1× port diameter clearance */
   _dimCache={z:zoom,d:d};
   return d;
 }
 /* Resolve LOD param: accepts zoom number (interpolated) or tier string (fixed) */
 function _ld(lod){return typeof lod==='number'?getDims(lod):Object.assign({cw:COL_WIDTH[lod||'full']},LOD_DIMS[lod||'full'])}
-const EP=40; /* edge padding inside groups — room for wire lanes */
-const NG=160; /* horizontal gap between nodes — routing clearance */
+const EP=40; /* FULL-ZOOM edge padding — used only for initial layout data + new group creation. Live layout uses getDims(zoom).ep */
+const NG=160; /* FULL-ZOOM node gap — used only for initial layout data. Live layout uses getDims(zoom).ng */
 /* Estimate total content bounds for a given LOD tier (for fit-to-screen) */
 function estimateTierBounds(tier,nodes,groups){
   const ld=LOD_DIMS[tier],cw=COL_WIDTH[tier];
@@ -416,9 +416,12 @@ function portMinDims(nd,zoom,pbn){
   const titleW=longest*titleFs*0.7;
   const titlePad=Math.round(140*(d.pd||1)); /* dot + buttons + gaps */
   const titleMinW=titleW+titlePad;
-  /* Title stacking adds height — each extra line needs ~titleFs*1.3 */
-  const titleLines=words.length>1?words.length:1;
-  const titleMinH=titleLines>1?Math.round(titleFs*1.3*titleLines+20*(d.pd||1)):0;
+  /* Title stacking adds height — each extra line needs ~titleFs*1.3.
+     Cap at 2 lines max. No height cap — the cascade system handles
+     group sizing at all zoom levels. */
+  const titleLines=Math.min(words.length>1?words.length:1, 2);
+  const rawTitleH=titleLines>1?Math.round(titleFs*1.3*titleLines+20*(d.pd||1)):0;
+  const titleMinH=rawTitleH;
   return{
     minW:Math.max(maxH>0?(maxH-1)*pSep+pOuter:0, titleMinW),
     minH:Math.max(maxV>0?(maxV-1)*pSep+pOuter:0, titleMinH)
@@ -2233,6 +2236,8 @@ function App(){
   const manualGroupSizes=useRef({}); /* {groupId:{w,h}} — floor set by manual resize */
   /* zoomCascadeFrameRef removed — vertical-only overlap resolution eliminates horizontal drift */
   const lastCascadeZoomRef=useRef(null); /* zoom level at last full cascade — detects zoom changes */
+  const prevDragIdRef=useRef(null); /* track previous activeDragId to detect drag-end */
+  const restingGroupsRef=useRef(null); /* group centers + dims at rest — cascade scales from these */
   const customThemesRef=useRef({}); /* {groupId:{nodeBg,headerBg,accent,text}} — custom group themes */
   /* HSV ↔ Hex helpers for color picker */
   function hsvToHex(h,s,v){
@@ -2425,109 +2430,98 @@ function App(){
         changed=true;return{...g,w:fitW,h:fitH}}
       return g;
     });
-    /* Group position management:
-       - On zoom change: scale X proportionally, cascade Y using gap-ratio scaling.
-         Gaps between groups scale by (newRawGap / oldRawGap) so user-placed gaps
-         are preserved proportionally across zoom levels. No ratchet, no magnetic snap.
-       - On normal renders: push-apart only overlap resolution.
-         Respects user's manual positioning — only prevents actual overlaps. */
+    /* ── Group position cascade ──
+       Two-phase system that preserves 2D spatial relationships across zoom:
+       Phase A: Scale group CENTERS proportionally from resting state.
+       Phase B: Resolve any overlaps via minimum-displacement separation.
+       Guarantees zero drift: at rest zoom, scales=1, sizes match → exact restoration. */
+    const _dragJustEnded=!!prevDragIdRef.current&&!activeDragId;
+    prevDragIdRef.current=activeDragId;
     if(!activeDragId){
-      const prevZoom=lastCascadeZoomRef.current;
-      const zoomChanged=prevZoom!==null&&Math.abs(prevZoom-zoom)>0.001;
+
+      /* ── Capture resting state on init or drag end ── */
+      if(!restingGroupsRef.current||_dragJustEnded){
+        /* Use pre-drag zoom (lastCascadeZoomRef) for drag-end captures,
+           current zoom for init — prevents resting zoom being overwritten
+           if the first post-drag render coincides with a zoom change. */
+        const rz=restingGroupsRef.current?lastCascadeZoomRef.current:zoom;
+        const rd=getDims(rz);
+        restingGroupsRef.current={zoom:rz,dims:rd,groups:{}};
+        fitted.forEach(g=>{
+          restingGroupsRef.current.groups[g.id]={x:g.x,y:g.y,w:g.w,h:g.h};
+        });
+      }
       lastCascadeZoomRef.current=zoom;
-      const rawGap=_lerpDims(zoom).gap;
-      if(zoomChanged&&fitted.length>0){
-        const prevRaw=_lerpDims(prevZoom);
-        const curRaw=_lerpDims(zoom);
-        /* Scale X positions proportionally */
-        const xPrev=prevRaw.cw+prevRaw.ng;
-        const xNew=curRaw.cw+curRaw.ng;
-        if(Math.abs(xPrev-xNew)>1){
-          const xScale=xNew/xPrev;
-          for(let i=0;i<fitted.length;i++){
-            const newX=fitted[i].x*xScale;
-            if(Math.abs(fitted[i].x-newX)>1){
-              fitted[i]={...fitted[i],x:newX};
-              changed=true;
-            }
-          }
-        }
-        /* Y cascade with gap-ratio scaling.
-           Measure each gap from pre-auto-fit state (groups), scale it by
-           gapRatio = curRaw.gap/prevRaw.gap, then reposition using new
-           (auto-fitted) heights. This preserves user-placed gaps proportionally
-           while adapting to changing group heights.
-           IMPORTANT: Use ORIGINAL (pre-zoom) horizontal positions to determine
-           which groups overlap horizontally. This prevents side-positioned groups
-           from being pulled into the vertical cascade after X scaling brings them
-           closer together. */
-        const gapRatio=curRaw.gap/Math.max(prevRaw.gap,0.1);
-        const yScale=(2*curRaw.ep+curRaw.nh+curRaw.gh)/(2*prevRaw.ep+prevRaw.nh+prevRaw.gh);
-        /* Pre-auto-fit state (from `groups` — original positions, widths, heights) */
-        const origSorted=[...groups].sort((a,b)=>a.y-b.y);
-        const origGapMap={};
-        /* Build map of original horizontal overlap relationships.
-           Only cascade Y between groups that WERE vertically stacked (horizontally
-           overlapping) before this zoom change. Side-by-side groups stay independent. */
-        const origHOverlap={};
-        for(let i=0;i<origSorted.length;i++){
-          for(let j=0;j<i;j++){
-            const a=origSorted[i],b=origSorted[j];
-            const ov=a.x<b.x+b.w+prevRaw.gap&&a.x+a.w+prevRaw.gap>b.x;
-            if(ov){
-              if(!origHOverlap[a.id])origHOverlap[a.id]=new Set();
-              origHOverlap[a.id].add(b.id);
-            }
-          }
-        }
-        for(let i=1;i<origSorted.length;i++){
-          origGapMap[origSorted[i].id]=origSorted[i].y-(origSorted[i-1].y+origSorted[i-1].h);
-        }
-        const sorted=[...fitted].sort((a,b)=>a.y-b.y);
-        /* First group: scale Y proportionally */
-        {const newY=sorted[0].y*yScale;
-        if(Math.abs(sorted[0].y-newY)>1){
-          const idx=fitted.findIndex(f=>f.id===sorted[0].id);
-          fitted[idx]={...fitted[idx],y:newY};
-          sorted[0]={...sorted[0],y:newY};
-          changed=true;
-        }}
-        /* Remaining groups: reposition using scaled original gap */
-        for(let i=1;i<sorted.length;i++){
-          let targetY=sorted[i].y*yScale; /* fallback: proportional scale */
-          for(let j=i-1;j>=0;j--){
-            const prev=sorted[j];
-            /* Check ORIGINAL horizontal overlap — not post-scale positions */
-            const wasStacked=origHOverlap[sorted[i].id]?.has(prev.id);
-            if(!wasStacked)continue;
-            const origGap=origGapMap[sorted[i].id]??prevRaw.gap;
-            const scaledGap=Math.max(origGap*gapRatio,0);
-            targetY=prev.y+prev.h+scaledGap;
-            break; /* cascade from nearest predecessor */
-          }
-          if(Math.abs(sorted[i].y-targetY)>1){
-            const idx=fitted.findIndex(f=>f.id===sorted[i].id);
-            fitted[idx]={...fitted[idx],y:targetY};
-            sorted[i]={...sorted[i],y:targetY};
+
+      if(fitted.length>0){
+        const rest=restingGroupsRef.current;
+        const restDims=rest.dims;
+        const curDims=getDims(zoom);
+
+        /* ── Phase A: Scale group positions from resting state ──
+           Separate X/Y scales because LOD dimensions change at different rates.
+           Scales top-left positions directly — preserves group ordering.
+           The 2D overlap resolver in Phase B handles any collisions caused by
+           groups changing size at different rates across zoom levels. */
+        const xScale=(curDims.cw+curDims.ng)/(restDims.cw+restDims.ng);
+        const yScale=(curDims.nh+curDims.vg+curDims.gh)/(restDims.nh+restDims.vg+restDims.gh);
+
+        for(let i=0;i<fitted.length;i++){
+          const rg=rest.groups[fitted[i].id];
+          if(!rg)continue;
+          const newX=rg.x*xScale;
+          const newY=rg.y*yScale;
+          if(Math.abs(fitted[i].x-newX)>1||Math.abs(fitted[i].y-newY)>1){
+            fitted[i]={...fitted[i],x:newX,y:newY};
             changed=true;
           }
         }
-      }else if(!activeDragId){
-        /* Normal render (no zoom change): push-apart only overlap resolution. */
-        const sorted=[...fitted].sort((a,b)=>a.y-b.y);
-        for(let i=1;i<sorted.length;i++){
-          for(let j=0;j<i;j++){
-            const prev=sorted[j];
-            const hOverlap=sorted[i].x<prev.x+prev.w+rawGap&&sorted[i].x+sorted[i].w+rawGap>prev.x;
-            if(!hOverlap)continue;
-            const targetY=prev.y+prev.h+rawGap;
-            if(sorted[i].y<targetY-1){
-              const idx=fitted.findIndex(f=>f.id===sorted[i].id);
-              fitted[idx]={...fitted[idx],y:targetY};
-              sorted[i]={...sorted[i],y:targetY};
+
+        /* ── Phase B: Anchor-based overlap resolution ──
+           For each overlapping pair:
+           1. Determine axis from resting-state OVERLAP, not center distance:
+              - No Y overlap at rest → groups were stacked → push on Y
+              - No X overlap at rest → groups were side-by-side → push on X
+              This handles asymmetric groups (different widths) correctly.
+           2. The group closer to the origin STAYS, the other moves fully clear.
+           Guarantees complete separation in one pass per pair. */
+        const minGap=Math.max(curDims.gap, 15/Math.max(zoom,0.05));
+        for(let pass=0;pass<8;pass++){
+          let anyPush=false;
+          for(let i=0;i<fitted.length;i++){
+            for(let j=i+1;j<fitted.length;j++){
+              const a=fitted[i],b=fitted[j];
+              const oX=Math.min(a.x+a.w,b.x+b.w)-Math.max(a.x,b.x)+minGap;
+              const oY=Math.min(a.y+a.h,b.y+b.h)-Math.max(a.y,b.y)+minGap;
+              if(oX<=0||oY<=0)continue;
+              anyPush=true;
+              /* Decide axis from resting-state overlap */
+              const ra=rest.groups[a.id],rb=rest.groups[b.id];
+              let pushX;
+              if(ra&&rb){
+                const rox=Math.min(ra.x+ra.w,rb.x+rb.w)-Math.max(ra.x,rb.x);
+                const roy=Math.min(ra.y+ra.h,rb.y+rb.h)-Math.max(ra.y,rb.y);
+                /* If no Y overlap at rest → stacked → push Y.
+                   If no X overlap at rest → side-by-side → push X.
+                   If neither overlapped (diagonal) → minimum displacement. */
+                if(rox<=0&&roy<=0) pushX=oX<oY;
+                else if(rox<=0)    pushX=true;
+                else               pushX=false; /* roy<=0 or both overlap → push Y */
+              }else{
+                pushX=oX<oY;
+              }
+              /* Anchor: group closer to origin stays, other moves clear */
+              if(pushX){
+                if(a.x<=b.x) fitted[j]={...fitted[j],x:a.x+a.w+minGap};
+                else          fitted[i]={...fitted[i],x:b.x+b.w+minGap};
+              }else{
+                if(a.y<=b.y) fitted[j]={...fitted[j],y:a.y+a.h+minGap};
+                else          fitted[i]={...fitted[i],y:b.y+b.h+minGap};
+              }
               changed=true;
             }
           }
+          if(!anyPush)break;
         }
       }
     }
@@ -2821,12 +2815,13 @@ function App(){
       case 'resizing_group':{
         const c=toCanvas(e.clientX,e.clientY);
         const r=ir,dx=c.x-r.scx,dy=c.y-r.scy;
-        /* Content-aware minimum width: prevent nodes from overlapping.
-           Uses EP for edge padding, MIN_SPACING=20 for minimum inter-node gap. */
-        const MIN_SPACING=40; /* minimum inter-node gap during resize — matches routing clearance */
-        const contentMinW=2*EP+r.cols*r.nodeW+(r.cols>1?(r.cols-1)*MIN_SPACING:0);
-        const contentMinH=2*EP+r.rows*r.nodeH+(r.rows>1?(r.rows-1)*MIN_SPACING:0)+getDims(zoom).gh;
+        /* Content-aware minimum: prevent nodes from overlapping during resize.
+           Uses LOD-aware padding so resize respects current zoom level. */
         const _ld=getDims(zoom);
+        const _ep=_ld.ep; /* LOD-aware edge padding */
+        const MIN_SPACING=40; /* minimum inter-node gap during resize */
+        const contentMinW=2*_ep+r.cols*r.nodeW+(r.cols>1?(r.cols-1)*MIN_SPACING:0);
+        const contentMinH=2*_ep+r.rows*r.nodeH+(r.rows>1?(r.rows-1)*MIN_SPACING:0)+_ld.gh;
         const minW=Math.max(minGW(_ld),contentMinW);
         const minH=Math.max(minGH(_ld),contentMinH);
         let newX=r.x,newY=r.y,newW=r.w,newH=r.h;
@@ -2838,7 +2833,7 @@ function App(){
         if(r.origNodes&&r.origNodes.length>0&&r.rows>0&&r.cols>0){
           /* Even redistribution: distribute nodes evenly across available space.
              Symmetric by design — result depends only on target dimensions, not drag side. */
-          const innerW=newW-EP*2, innerH=newH-getDims(zoom).gh-EP*2;
+          const innerW=newW-_ep*2, innerH=newH-_ld.gh-_ep*2;
           if(innerW>0&&innerH>0){
             /* Compute even spacing for each row/column */
             const colSpace=r.cols>1?(innerW-r.cols*r.nodeW)/(r.cols-1):Math.max(0,(innerW-r.nodeW)/2);
@@ -2847,8 +2842,8 @@ function App(){
               if(n.gid!==r.id)return n;
               const slot=r.nodeSlots[n.id];
               if(!slot)return n;
-              const newNodeX=r.cols>1?EP+slot.col*(r.nodeW+colSpace):EP+colSpace;
-              const newNodeY=r.rows>1?EP+slot.row*(r.nodeH+rowSpace):EP+rowSpace;
+              const newNodeX=r.cols>1?_ep+slot.col*(r.nodeW+colSpace):_ep+colSpace;
+              const newNodeY=r.rows>1?_ep+slot.row*(r.nodeH+rowSpace):_ep+rowSpace;
               return{...n,
                 x:Math.max(10,Math.round(newNodeX)),
                 y:Math.max(10,Math.round(newNodeY))
@@ -3084,8 +3079,9 @@ function App(){
 
       case 'wiring': /* already handled above */
       case 'dragging_group':
-        /* Mark this group as manually positioned so cascade respects it */
-        /* group positions now freely movable — no manual tracking needed */
+        /* Force re-render so _dragJustEnded fires at the current (drag-end)
+           zoom before any subsequent zoom changes can overwrite it. */
+        setGroups(gs=>[...gs]);
         break;
       case 'panning':
         break;
@@ -3536,7 +3532,7 @@ function App(){
                 boxShadow:`0 0 ${P(8*fs)}px ${isErr?'#cc333366':mdl.color+'55'}`}}/>
               <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:700,
                 overflow:'hidden',textOverflow:'ellipsis',whiteSpace:lod==='full'?'nowrap':'normal',
-                wordBreak:'break-word',lineHeight:1.15,
+                overflowWrap:'break-word',wordBreak:'normal',lineHeight:1.15,
                 letterSpacing:P(1*fs),opacity:0.9}}>{nd.label}</span>
               {showNodeBtns&&<span onClick={e=>{e.stopPropagation();updateNode(nd.id,{status:nd.status==='ok'?'error':'ok'})}}
                 onMouseDown={e=>e.stopPropagation()}
@@ -3561,7 +3557,7 @@ function App(){
                 background:isErr?'#cc3333':t.accent,opacity:0.7}}/>
               <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:600,
                 overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'normal',
-                wordBreak:'break-word',lineHeight:1.15}}>{nd.label}</span>
+                overflowWrap:'break-word',wordBreak:'normal',lineHeight:1.15}}>{nd.label}</span>
               {nd.auth&&<span style={{fontSize:P(20*fs),fontWeight:700,background:'#d4a03022',
                 color:'#d4a030',padding:`${P(4*pd)}px ${P(10*pd)}px`,borderRadius:P(4*pd),letterSpacing:0.8,
                 textTransform:'uppercase',opacity:0.8}}>auth</span>}
@@ -3593,7 +3589,7 @@ function App(){
                 background:isErr?'#cc3333':t.accent,
                 boxShadow:`0 0 ${P(8*pd)}px ${isErr?'#cc333888':t.accent+'88'}`}}/>
               <span style={{flex:1,color:isErr?'#ff6666':t.text,fontSize:P(28*fs),fontWeight:600,overflow:'hidden',
-                textOverflow:'ellipsis',whiteSpace:'normal',wordBreak:'break-word',lineHeight:1.15}}>{nd.label}</span>
+                textOverflow:'ellipsis',whiteSpace:'normal',overflowWrap:'break-word',wordBreak:'normal',lineHeight:1.15}}>{nd.label}</span>
               {nd.auth&&<span style={{cursor:'default'}}
                 onMouseEnter={e=>{if(window._tipTimer)clearTimeout(window._tipTimer);const r=e.currentTarget.getBoundingClientRect();setBadgeTip({type:'auth',x:r.right,y:r.bottom,perms:nd.authPerms||[]})}}
                 onMouseLeave={()=>{window._tipTimer=setTimeout(()=>setBadgeTip(null),150)}}>
