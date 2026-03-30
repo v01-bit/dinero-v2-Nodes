@@ -2426,19 +2426,20 @@ function App(){
       return g;
     });
     /* Group position management:
-       - On zoom change: cascade to pack groups tightly with LOD-appropriate gap.
-       - On normal renders: only resolve actual 2D overlaps — no cascade.
-       This lets users freely arrange groups while keeping zoom transitions clean. */
+       - On zoom change: scale X proportionally, cascade Y using gap-ratio scaling.
+         Gaps between groups scale by (newRawGap / oldRawGap) so user-placed gaps
+         are preserved proportionally across zoom levels. No ratchet, no magnetic snap.
+       - On normal renders: push-apart only overlap resolution.
+         Respects user's manual positioning — only prevents actual overlaps. */
     if(!activeDragId){
       const prevZoom=lastCascadeZoomRef.current;
       const zoomChanged=prevZoom!==null&&Math.abs(prevZoom-zoom)>0.001;
       lastCascadeZoomRef.current=zoom;
       const rawGap=_lerpDims(zoom).gap;
       if(zoomChanged&&fitted.length>0){
-        /* Zoom changed — scale X positions proportionally to preserve horizontal
-           arrangement. Y positions are handled by bidirectional cascade below. */
         const prevRaw=_lerpDims(prevZoom);
         const curRaw=_lerpDims(zoom);
+        /* Scale X positions proportionally */
         const xPrev=prevRaw.cw+prevRaw.ng;
         const xNew=curRaw.cw+curRaw.ng;
         if(Math.abs(xPrev-xNew)>1){
@@ -2451,28 +2452,49 @@ function App(){
             }
           }
         }
-        /* Bidirectional Y cascade on zoom change: both push apart AND pull together.
-           This guarantees gaps = rawGap at every zoom level, eliminating ratchet.
-           Groups that would overlap are pushed apart; groups with excess gap are
-           pulled together. Only affects horizontally-overlapping group pairs. */
+        /* Y cascade with gap-ratio scaling.
+           Measure each gap from pre-auto-fit state (groups), scale it by
+           gapRatio = curRaw.gap/prevRaw.gap, then reposition using new
+           (auto-fitted) heights. This preserves user-placed gaps proportionally
+           while adapting to changing group heights. */
+        const gapRatio=curRaw.gap/Math.max(prevRaw.gap,0.1);
+        const yScale=(2*curRaw.ep+curRaw.nh+curRaw.gh)/(2*prevRaw.ep+prevRaw.nh+prevRaw.gh);
+        /* Pre-auto-fit gaps (from `groups` state — original positions AND heights) */
+        const origSorted=[...groups].sort((a,b)=>a.y-b.y);
+        const origGapMap={};
+        for(let i=1;i<origSorted.length;i++){
+          origGapMap[origSorted[i].id]=origSorted[i].y-(origSorted[i-1].y+origSorted[i-1].h);
+        }
         const sorted=[...fitted].sort((a,b)=>a.y-b.y);
+        /* First group: scale Y proportionally */
+        {const newY=sorted[0].y*yScale;
+        if(Math.abs(sorted[0].y-newY)>1){
+          const idx=fitted.findIndex(f=>f.id===sorted[0].id);
+          fitted[idx]={...fitted[idx],y:newY};
+          sorted[0]={...sorted[0],y:newY};
+          changed=true;
+        }}
+        /* Remaining groups: reposition using scaled original gap */
         for(let i=1;i<sorted.length;i++){
-          for(let j=0;j<i;j++){
+          let targetY=sorted[i].y*yScale; /* fallback: proportional scale */
+          for(let j=i-1;j>=0;j--){
             const prev=sorted[j];
-            const hOverlap=sorted[i].x<prev.x+prev.w+rawGap&&sorted[i].x+sorted[i].w+rawGap>prev.x;
-            if(!hOverlap)continue;
-            const targetY=prev.y+prev.h+rawGap;
-            if(Math.abs(sorted[i].y-targetY)>1){
-              const idx=fitted.findIndex(f=>f.id===sorted[i].id);
-              fitted[idx]={...fitted[idx],y:targetY};
-              sorted[i]={...sorted[i],y:targetY};
-              changed=true;
-            }
+            const hOv=sorted[i].x<prev.x+prev.w+rawGap&&sorted[i].x+sorted[i].w+rawGap>prev.x;
+            if(!hOv)continue;
+            const origGap=origGapMap[sorted[i].id]??prevRaw.gap;
+            const scaledGap=Math.max(origGap*gapRatio,0);
+            targetY=prev.y+prev.h+scaledGap;
+            break; /* cascade from nearest predecessor */
+          }
+          if(Math.abs(sorted[i].y-targetY)>1){
+            const idx=fitted.findIndex(f=>f.id===sorted[i].id);
+            fitted[idx]={...fitted[idx],y:targetY};
+            sorted[i]={...sorted[i],y:targetY};
+            changed=true;
           }
         }
       }else if(!activeDragId){
-        /* Normal render (no zoom change): push-apart only overlap resolution.
-           This respects user's manual positioning — only prevents actual overlaps. */
+        /* Normal render (no zoom change): push-apart only overlap resolution. */
         const sorted=[...fitted].sort((a,b)=>a.y-b.y);
         for(let i=1;i<sorted.length;i++){
           for(let j=0;j<i;j++){
@@ -3461,7 +3483,7 @@ function App(){
           const abs=g?nAbs(nd,groups,zoom):{x:nd.x,y:nd.y};
           const _d=getDims(zoom);
           const fs=_d.fs||1, pd=_d.pd||1; /* font scale + padding scale */
-          const showNodeBtns=zoom>=0.2244; /* hide ✓/✕ below ~55% display zoom */
+          const showNodeBtns=zoom>=0.2448; /* hide ✓/✕ below ~60% display zoom */
           /* Ensure node is large enough to contain all counter-scaled ports */
           const _pm=portMinDims(nd,zoom,portsByNode);
           const lodW=Math.max(Math.min(nd.w,_d.cw),_pm.minW);
