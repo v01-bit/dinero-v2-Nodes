@@ -1081,8 +1081,8 @@ function ModelDropdown({value,onChange,models,nodeBg,accent,color,zoom=1,fontSiz
           border:`1px solid ${accent}22`,userSelect:'none',transition:'background 0.15s'}}
         onMouseEnter={e=>e.currentTarget.style.background=accent+'12'}
         onMouseLeave={e=>e.currentTarget.style.background=nodeBg}>
-        <span style={{color:'#ccc',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0,flex:1}}>{cur.label} ({cur.cost})</span>
-        <span style={{fontSize:Math.round((_fs||26)*1.6),color:'#aaa',marginLeft:Math.round((_fs||26)*0.3),lineHeight:0.5,flexShrink:0}}>{open?'▴':'▾'}</span>
+        <span style={{color:cur.color,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',minWidth:0,flex:1}}>{cur.label} ({cur.cost})</span>
+        <span style={{fontSize:Math.round((_fs||26)*1.6),color:accent,marginLeft:Math.round((_fs||26)*0.3),lineHeight:0.5,flexShrink:0,opacity:0.7}}>{open?'▴':'▾'}</span>
       </div>
       {visible&&pos&&(()=>{
         /* Scale menu to match trigger's on-screen size (trigger is inside canvas transform) */
